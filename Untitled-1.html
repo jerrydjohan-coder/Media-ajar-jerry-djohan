@@ -1,0 +1,1999 @@
+<!doctype html>
+<html lang="id" class="h-full">
+ <head><script>window["__codeletBootstrap__"]=JSON.parse('{"A":"A","B":"20260708-03-9090aba"}');</script><script src="/_sdk/f432b76fb310b513.telemetry_sdk.js" integrity="sha512-9FJQ55EKmmqhyyik8BhrMVfm0+iYYfb8uOlRsjtkxJMEI97qOVEI4PnHohDjQAtvAep0IOEpdQ64eki0sz62ug=="></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas Anatomi Skeletal</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/8650958800d6c92a.element_sdk.js" integrity="sha512-zFMhEG5W24TdVhhc4yw+K4kKrl6mClLz7Nz7OlZcKY64bZTx26LpVI6mwMCarQMzfrHe8i4fBMu4fxoFej2m9g=="></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+  <script>
+// ============ SIMPLE STATE ============
+let isInitialized = false;
+let userData = null;
+let allUsers = [];
+
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        navy: '#0B1D3A',
+        ocean: '#1565C0',
+        sky: '#E3F2FD',
+        bone: '#F8F9FB',
+        steel: '#546E7A',
+      }
+    }
+  }
+}
+
+function checkRegistration() {
+  userData = JSON.parse(localStorage.getItem('atlas_user') || 'null');
+  return userData ? true : false;
+}
+
+function showRegistration() {
+  const regScreen = document.getElementById('registration-screen');
+  const app = document.getElementById('app');
+  if (regScreen) regScreen.classList.remove('hidden');
+  if (app) app.classList.add('hidden');
+}
+
+function hideRegistration() {
+  const regScreen = document.getElementById('registration-screen');
+  const app = document.getElementById('app');
+  if (regScreen) regScreen.classList.add('hidden');
+  if (app) {
+    app.classList.remove('hidden');
+    app.classList.add('flex', 'flex-col');
+  }
+}
+
+function updateUserWatermark() {
+  if (userData) {
+    const watermarkEl = document.getElementById('user-watermark');
+    if (watermarkEl) {
+      watermarkEl.innerHTML = `👤 ${userData.nama_lengkap}<br><span class="text-[10px] opacity-70">${userData.nim} • ${userData.kelas}</span>`;
+    }
+  }
+}
+
+function logoutUser() {
+  localStorage.removeItem('atlas_user');
+  userData = null;
+  allUsers = [];
+  quizStates = {};
+  quizTimers = {};
+  currentPage = 'home';
+  isInitialized = false;
+  openSections = {};
+  
+  // Clear all timers
+  Object.keys(quizTimers).forEach(key => {
+    if (quizTimers[key]) clearInterval(quizTimers[key]);
+  });
+  
+  // Hide app and show registration
+  const app = document.getElementById('app');
+  const regScreen = document.getElementById('registration-screen');
+  if (app) app.classList.add('hidden');
+  if (regScreen) regScreen.classList.remove('hidden');
+  
+  // Reset and rebuild form
+  const form = document.getElementById('registration-form');
+  if (form) {
+    form.reset();
+    form.onsubmit = null;
+    clearErrors();
+    buildRegistrationForm();
+  }
+}
+</script>
+  <style>
+html, body { height: 100%; margin: 0; font-family: 'DM Sans', sans-serif; }
+.font-display { font-family: 'Playfair Display', serif; }
+
+/* Sidebar */
+.sidebar-section-btn { transition: all .2s; }
+.sidebar-section-btn:hover { background: rgba(21,101,192,.08); }
+.sidebar-section-btn.active { background: rgba(21,101,192,.12); color: #1565C0; }
+.sidebar-item { transition: all .15s; padding: 6px 12px 6px 28px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #546E7A; }
+.sidebar-item:hover { background: rgba(21,101,192,.06); color: #1565C0; }
+.sidebar-item.active { background: #1565C0; color: #fff; font-weight: 600; }
+.sub-items { max-height: 0; overflow: hidden; transition: max-height .3s ease; }
+.sub-items.open { max-height: 800px; }
+
+/* Quiz */
+.quiz-option { transition: all .2s; cursor: pointer; border: 2px solid #E3F2FD; border-radius: 10px; padding: 12px 16px; }
+.quiz-option:hover { border-color: #1565C0; background: #E3F2FD; }
+.quiz-option.correct { border-color: #2E7D32; background: #E8F5E9; }
+.quiz-option.wrong { border-color: #C62828; background: #FFEBEE; }
+.quiz-option.disabled { pointer-events: none; opacity: .7; }
+
+/* Content animations */
+.content-fade { animation: fadeUp .4s ease; }
+@keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: #B0BEC5; border-radius: 4px; }
+
+/* Mobile sidebar overlay */
+.sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; }
+.sidebar-overlay.show { display: block; }
+
+/* Highlight card */
+.highlight-card { border-left: 4px solid #1565C0; background: #E3F2FD; border-radius: 0 10px 10px 0; }
+
+/* 3D placeholder */
+.embed-3d { background: linear-gradient(135deg, #0B1D3A 0%, #1565C0 100%); border-radius: 14px; min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; gap: 12px; }
+
+/* Quiz Modal */
+.quiz-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 60; display: none; align-items: center; justify-content: center; padding: 1rem; }
+.quiz-modal-overlay.show { display: flex; }
+.quiz-modal-content { background: white; border-radius: 16px; max-width: 600px; width: 100%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: slideUp .3s ease; }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.quiz-modal-header { position: sticky; top: 0; padding: 1.5rem; background: linear-gradient(135deg, #0B1D3A 0%, #1565C0 100%); color: white; border-radius: 16px 16px 0 0; display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+.quiz-modal-body { padding: 2rem; }
+.quiz-close-btn { background: rgba(255,255,255,.2); hover:background: rgba(255,255,255,.3); border: none; cursor: pointer; padding: 0.5rem; border-radius: 8px; color: white; transition: all .2s; }
+.quiz-close-btn:hover { background: rgba(255,255,255,.3); }
+</style>
+  <style>body { box-sizing: border-box; }</style>
+  <script src="/_sdk/0179d719c431a79e.data_sdk.js" type="text/javascript" integrity="sha512-OsRvJkI5GkC3MJQcgotQYotpzrMSX415GiKKgvYdxQEEkzD/fdchShO2FMSy0PJr/tiINMXOk5Vl2zAgg6bUiA=="></script>
+ </head>
+ <body class="h-full bg-bone">
+  <div id="app" class="h-full flex flex-col overflow-hidden hidden" style="width:100%;"><!-- Top Navbar -->
+   <header id="navbar" class="flex items-center justify-between px-4 md:px-6 py-3 bg-navy text-white z-30 flex-shrink-0">
+    <div class="flex items-center gap-3"><button id="mobile-menu-btn" class="md:hidden p-1.5 rounded-lg hover:bg-white/10"><i data-lucide="menu" class="w-5 h-5"></i></button>
+     <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-lg bg-ocean flex items-center justify-center">
+       <i data-lucide="zap" class="w-4 h-4"></i>
+      </div><span id="site-title-text" class="font-display font-bold text-base md:text-lg tracking-tight">Learning Platform</span>
+     </div>
+     <div class="hidden md:block text-xs text-sky/60 pl-6 border-l border-white/20"><span id="user-watermark"></span>
+     </div>
+    </div>
+    <nav id="main-nav" class="hidden md:flex items-center gap-1 text-sm"><button onclick="navigateTo('home')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="home">Beranda</button> <button onclick="navigateTo('terminologi')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="terminologi">Terminologi</button> <button onclick="navigateTo('axial')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="axial">Axial</button> <button onclick="navigateTo('appendicular')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="appendicular">Appendiculare</button>
+    </nav>
+    <div class="flex items-center gap-3"><span class="hidden md:inline text-xs text-sky/70">Fakultas Kedokteran</span><button onclick="logoutUser()" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition flex items-center gap-1.5"><i data-lucide="log-out" class="w-3.5 h-3.5"></i><span class="hidden md:inline">Logout</span></button>
+    </div>
+   </header>
+   <div class="flex flex-1 overflow-hidden"><!-- Sidebar Overlay (mobile) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div><!-- Sidebar -->
+    <aside id="sidebar" class="fixed md:relative z-50 md:z-auto -translate-x-full md:translate-x-0 transition-transform w-64 flex-shrink-0 bg-white border-r border-gray-100 h-full overflow-y-auto flex flex-col">
+     <div class="p-4 border-b border-gray-100 flex items-center justify-between"><span class="text-xs font-semibold text-steel uppercase tracking-wider">Navigasi Regio</span> <button class="md:hidden p-1 rounded hover:bg-gray-100" onclick="closeSidebar()"><i data-lucide="x" class="w-4 h-4 text-steel"></i></button>
+     </div>
+     <nav id="sidebar-nav" class="flex-1 p-3 space-y-1 text-sm"></nav>
+    </aside><!-- Main Content -->
+    <main id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8">
+     <div id="content-area" class="max-w-3xl mx-auto content-fade"></div>
+    </main>
+   </div>
+  </div><!-- Registration Screen -->
+  <div id="registration-screen" class="fixed inset-0 z-50 bg-gradient-to-br from-navy via-blue-900 to-ocean flex items-center justify-center p-4 md:p-0">
+   <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+     <div class="inline-block mb-6 p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+      <img src="https://i.ibb.co.com/7NJhhcFy/images-1.jpg" alt="Logo UNHAS" class="w-16 h-16 object-contain" onerror="this.style.background='#fff'; this.style.width='64px'; this.style.height='64px'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.textContent='📚';">
+     </div>
+     <h1 class="font-display text-2xl md:text-3xl font-bold text-white mb-2">Selamat Datang</h1>
+     <p class="text-sky text-xs md:text-sm leading-relaxed">Media Ajar Anatomi Skeletal<br>
+       Departemen Anatomi<br>
+       Fakultas Kedokteran Universitas Hasanuddin</p>
+    </div>
+    <form id="registration-form" class="space-y-4 bg-white/95 backdrop-blur-sm p-6 rounded-xl shadow-2xl">
+     <div>
+      <label for="nama-lengkap" class="block text-sm font-semibold text-navy mb-2">Nama Lengkap</label> <input type="text" id="nama-lengkap" placeholder="Masukkan nama lengkap Anda" class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/20 transition" required>
+      <div class="error-msg text-xs text-red-600 mt-1 hidden"></div>
+     </div>
+     <div>
+      <label for="nim" class="block text-sm font-semibold text-navy mb-2">Nomor Induk Mahasiswa (NIM)</label> <input type="text" id="nim" placeholder="Masukkan NIM Anda" class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/20 transition" required>
+      <div class="error-msg text-xs text-red-600 mt-1 hidden"></div>
+     </div>
+     <div>
+      <label for="kelas" class="block text-sm font-semibold text-navy mb-2">Kelas</label> <input type="text" id="kelas" placeholder="Masukkan kelas Anda (misal: A, B, C, D)" class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/20 transition" required>
+      <div class="error-msg text-xs text-red-600 mt-1 hidden"></div>
+     </div><button type="submit" class="w-full px-4 py-3 bg-gradient-to-r from-ocean to-blue-700 text-white rounded-lg font-semibold text-sm hover:shadow-lg transition flex items-center justify-center gap-2 mt-6"> <i data-lucide="arrow-right" class="w-4 h-4"></i>Lanjutkan </button>
+     <p id="form-error" class="text-xs text-red-600 text-center hidden"></p>
+    </form>
+   </div>
+  </div><!-- Quiz Modal -->
+  <div id="quiz-modal" class="quiz-modal-overlay">
+   <div class="quiz-modal-content">
+    <div class="quiz-modal-header">
+     <div>
+      <div class="font-display text-lg font-bold">
+       Kuis Interaktif
+      </div>
+      <div class="text-sm opacity-90" id="modal-title">
+       Regio
+      </div>
+     </div><button class="quiz-close-btn" onclick="closeQuizModal()"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="quiz-modal-body" id="quiz-modal-body"></div>
+   </div>
+  </div>
+  <script>
+// ============ REGISTRATION FORM ============
+function buildRegistrationForm() {
+  const form = document.getElementById('registration-form');
+  if (!form) {
+    console.error('❌ Form element not found');
+    return;
+  }
+  
+  // Remove old listener to prevent duplicates
+  form.onsubmit = null;
+  
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    console.log('✓ Form submitted');
+    clearErrors();
+    
+    const namaLengkap = document.getElementById('nama-lengkap').value.trim();
+    const nim = document.getElementById('nim').value.trim();
+    const kelas = document.getElementById('kelas').value.trim();
+    
+    let hasError = false;
+    
+    if (!namaLengkap) {
+      showError('nama-lengkap', 'Nama lengkap harus diisi');
+      hasError = true;
+    }
+    if (!nim) {
+      showError('nim', 'NIM harus diisi');
+      hasError = true;
+    }
+    if (!kelas) {
+      showError('kelas', 'Kelas harus diisi');
+      hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    // Create user data object
+    userData = { 
+      nama_lengkap: namaLengkap, 
+      nim: nim, 
+      kelas: kelas,
+      user_id: 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+    };
+    
+    // Save to localStorage synchronously
+    try {
+      const jsonStr = JSON.stringify(userData);
+      localStorage.setItem('atlas_user', jsonStr);
+      console.log('✓ localStorage.setItem called');
+      console.log('✓ User data saved:', userData);
+    } catch (err) {
+      console.error('❌ Error saving to localStorage:', err);
+      showError('nama-lengkap', 'Gagal menyimpan data. Coba lagi.');
+      return;
+    }
+    
+    // Verify immediately
+    const savedJson = localStorage.getItem('atlas_user');
+    console.log('✓ Verification read:', savedJson);
+    
+    if (!savedJson) {
+      console.error('❌ Verification failed: data not found in localStorage');
+      showError('nama-lengkap', 'Gagal menyimpan data. Coba lagi.');
+      return;
+    }
+    
+    try {
+      const parsed = JSON.parse(savedJson);
+      console.log('✓ Verification passed:', parsed);
+    } catch (err) {
+      console.error('❌ Parse error:', err);
+      return;
+    }
+    
+    // 1. Clear form
+    form.reset();
+    clearErrors();
+    
+    // 2. Stop ALL running timers immediately
+    for (let key in quizTimers) {
+      if (quizTimers[key]) {
+        clearInterval(quizTimers[key]);
+      }
+    }
+    quizTimers = {};
+    
+    // 3. Clear quiz states
+    quizStates = {};
+    
+    // 4. Reset page state
+    currentPage = 'home';
+    openSections = {};
+    
+    // 5. Hide registration
+    const registScreen = document.getElementById('registration-screen');
+    if (registScreen) registScreen.classList.add('hidden');
+    
+    // 6. Show app
+    const app = document.getElementById('app');
+    if (app) {
+      app.classList.remove('hidden');
+      app.classList.add('flex', 'flex-col');
+    }
+    
+    // 7. Close modal if open
+    const modal = document.getElementById('quiz-modal');
+    if (modal) modal.classList.remove('show');
+    
+    // 8. Update watermark
+    updateUserWatermark();
+    
+    // 9. Build sidebar fresh
+    buildSidebar();
+    
+    // 10. Render home content
+    renderContent();
+    
+    // 11. Apply theme
+    try { applyConfig(defaultConfig); } catch(e) {}
+    
+    // 12. Create icons
+    lucide.createIcons();
+    
+    // 13. Initialize SDK
+    initElementSdk();
+    
+    // 14. Highlight home nav
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.toggle('bg-white/15', b.dataset.nav === 'home');
+    });
+    
+    // 15. Scroll to top
+    const mc = document.getElementById('main-content');
+    if (mc) {
+      mc.scrollTop = 0;
+      setTimeout(() => { mc.scrollTop = 0; }, 50);
+    }
+  }, { once: false });
+}
+
+function showError(fieldId, message) {
+  const field = document.getElementById(fieldId);
+  if (field) {
+    const parent = field.closest('div');
+    if (parent) {
+      const errorDiv = parent.querySelector('.error-msg');
+      if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.classList.remove('hidden');
+      }
+    }
+  }
+}
+
+function clearErrors() {
+  document.querySelectorAll('.error-msg').forEach(el => {
+    el.textContent = '';
+    el.classList.add('hidden');
+  });
+  document.getElementById('form-error').classList.add('hidden');
+}
+
+// ============ DATA ============
+const DATA = {
+  terminologi: {
+    title: "Terminologi Anatomi",
+    intro: "Dasar pemahaman penting sebelum mempelajari sistem skeletal manusia.",
+    sections: [
+      { heading: "Posisi Anatomi", image: "https://i.ibb.co.com/DfBszWxG/Cuplikan-layar-. .png", text: "Posisi berdiri tegak, menghadap ke depan, lengan di samping tubuh dengan telapak tangan menghadap ke depan, dan kedua kaki rapat. Posisi ini menjadi acuan universal dalam mendeskripsikan lokasi struktur tubuh." },
+      { heading: "Arah Anatomis", highlights: [
+        { term: "Cranial / Superior", desc: "Mengarah ke kepala (atas)" },
+        { term: "Caudal / Inferior", desc: "Mengarah ke kaki (bawah)" },
+        { term: "Medial", desc: "Mengarah ke garis tengah tubuh" },
+        { term: "Lateral", desc: "Menjauhi garis tengah tubuh" },
+        { term: "Anterior / Ventral", desc: "Mengarah ke depan" },
+        { term: "Posterior / Dorsal", desc: "Mengarah ke belakang" },
+        { term: "Proximal", desc: "Lebih dekat ke batang tubuh" },
+        { term: "Distal", desc: "Lebih jauh dari batang tubuh" },
+      ]},
+      { heading: "Bidang Tubuh", highlights: [
+        { term: "Bidang Sagital", desc: "Membagi tubuh menjadi kiri dan kanan" },
+        { term: "Bidang Frontal/Coronal", desc: "Membagi tubuh menjadi anterior dan posterior" },
+        { term: "Bidang Transversal/Horizontal", desc: "Membagi tubuh menjadi superior dan inferior" },
+      ]},
+      { heading: "Istilah Osteologi", highlights: [
+        { term: "Processus", desc: "Tonjolan tulang" },
+        { term: "Fossa", desc: "Cekungan pada tulang" },
+        { term: "Foramen", desc: "Lubang pada tulang" },
+        { term: "Condylus", desc: "Tonjolan bulat pada sendi" },
+        { term: "Tuberositas", desc: "Tonjolan kasar untuk perlekatan otot" },
+        { term: "Crista", desc: "Peninggian/tepi tajam pada tulang" },
+      ]},
+    ],
+    quiz: [
+      { q: "Posisi anatomi menunjukkan telapak tangan menghadap ke arah?", options: ["Belakang","Depan","Samping","Bawah"], answer: 1 },
+      { q: "Istilah 'medial' berarti?", options: ["Menjauhi garis tengah","Mengarah ke kepala","Mengarah ke garis tengah","Mengarah ke kaki"], answer: 2 },
+      { q: "Bidang yang membagi tubuh menjadi kiri dan kanan disebut?", options: ["Frontal","Transversal","Sagital","Oblique"], answer: 2 },
+      { q: "Foramen pada tulang berarti?", options: ["Tonjolan","Cekungan","Lubang","Tepi tajam"], answer: 2 },
+      { q: "Arah 'proximal' berarti?", options: ["Lebih jauh dari batang tubuh","Mengarah ke belakang","Lebih dekat ke batang tubuh","Mengarah ke bawah"], answer: 2 },
+    ]
+  },
+  cranium: {
+    title: "Regio Cranium",
+    intro: "Cranium terdiri dari tulang-tulang yang membentuk tengkorak, melindungi otak dan organ sensorik. Terdiri dari 22 tulang yang terbagi menjadi neurocranium (melindungi otak) dan viscerocranium (kerangka wajah).",
+    sections: [
+      { heading: "Gambaran Umum Cranium", image: "https://i.ibb.co.com/bRKvJjmG/Cuplikan-layar-. .png", text: "Cranium adalah struktur kompleks yang dibentuk oleh kombinasi neurocranium dan viscerocranium. Struktur ini melindungi otak, organ sensorik, dan membentuk kerangka wajah." },
+      
+      { heading: "Neurocranium (Calvaria & Basis Cranii)", text: "Neurocranium terdiri dari 8 tulang yang membungkus dan melindungi otak: Os Frontale (1), Os Parietale (2), Os Temporale (2), Os Occipitale (1), Os Sphenoidale (1), Os Ethmoidale (1). Struktur ini juga disebut braincase." },
+      
+      { heading: "Viscerocranium (Tulang Wajah)", text: "Viscerocranium membentuk kerangka wajah, terdiri dari: Os Nasale (2), Os Lacrimale (2), Os Ethmoidale (1), Os Sphenoidale (1), Maxilla (2), Os Zygomaticum (2), Os Temporale (2), Mandibula (1), Vomer (1), Concha Nasalis Inferior (2), Os Palatinum (2), Os Hyoideum (1)." },
+      
+      { heading: "Anatomi Cranium Tampak Lateral (Norma Lateralis)", image: "https://i.ibb.co.com/Gf8fGsjy/Cuplikan-layar-. .png", highlights: [
+        { term: "Neurocranium Lateral", desc: "Os frontale, Os parietale, Os temporale, Os occipitale, dan Os sphenoidale berfungsi melindungi otak" },
+        { term: "Viscerocranium Lateral", desc: "Os nasale, Os lacrimale, Os zygomaticum, maxilla, dan mandibula membentuk kerangka wajah" },
+        { term: "Sutura Coronalis", desc: "Menghubungkan os frontale dengan os parietale di anterior" },
+        { term: "Sutura Squamosa", desc: "Menghubungkan os temporale dengan os parietale" },
+        { term: "Sutura Lambdoidea", desc: "Menghubungkan os parietale dengan os occipitale di posterior" },
+        { term: "Arcus Zygomaticus", desc: "Lengkung tulang yang dibentuk os zygomaticum dan prosesus zigomatikus temporale" },
+        { term: "Orbita", desc: "Cekungan untuk menerima bola mata, dibentuk oleh beberapa tulang" },
+        { term: "Foramen Supraorbitale", desc: "Jalur saraf dan pembuluh darah di atas orbita" },
+        { term: "Foramen Infraorbitale", desc: "Jalur saraf dan pembuluh darah di bawah orbita" },
+        { term: "Foramen Mentale", desc: "Jalur saraf dan pembuluh darah di dagu" },
+        { term: "Porus Acusticus Externus", desc: "Lubang telinga luar" },
+        { term: "Processus Mastoideus", desc: "Tonjolan di belakang telinga untuk perlekatan otot" },
+        { term: "Processus Styloideus", desc: "Tonjolan panjang pada os temporale" },
+      ]},
+      
+      { heading: "Anatomi Cranium Tampak Anterior (Norma Frontalis)", image: "https://i.ibb.co.com/4RHdhM9w/Cuplikan-layar-. .png", highlights: [
+        { term: "Os Frontale Superior", desc: "Membentuk dahi dan atap orbita" },
+        { term: "Os Nasale", desc: "Dua tulang kecil membentuk punggung hidung" },
+        { term: "Apertura Piriformis", desc: "Pembukaan anterior rongga hidung berbentuk seperti buah pir" },
+        { term: "Vomer", desc: "Membentuk septum hidung bagian inferior" },
+        { term: "Concha Nasalis Inferior", desc: "Turbinat inferior dalam rongga hidung" },
+        { term: "Maxilla", desc: "Membentuk kerangka wajah atas dan gigi atas" },
+        { term: "Os Zygomaticum", desc: "Tulang pipi membentuk struktur wajah lateral" },
+        { term: "Os Lacrimale", desc: "Tulang kecil di medial orbita untuk saluran air mata" },
+        { term: "Orbita", desc: "Cekungan berbentuk persegi yang melindungi bola mata" },
+        { term: "Mandibula", desc: "Rahang bawah yang dapat bergerak" },
+        { term: "Gigi (Dentes)", desc: "Berada pada maxilla dan mandibula untuk mastikasi" },
+      ]},
+      
+      { heading: "Anatomi Cranium Tampak Posterior (Norma Occipitalis)", image: "https://i.ibb.co.com/pjtLWFt3/Cuplikan-layar-. .png", highlights: [
+        { term: "Os Occipitale Dominan", desc: "Membentuk dasar dan belakang cranium, melindungi otak posterior" },
+        { term: "Os Parietale", desc: "Dua tulang besar yang membentuk atap dan sisi cranium" },
+        { term: "Sutura Sagittalis", desc: "Menghubungkan kedua os parietale di garis tengah" },
+        { term: "Sutura Lambdoidea", desc: "Menghubungkan os parietale dengan os occipitale berbentuk seperti lambda (Λ)" },
+        { term: "Protuberantia Occipitalis Externa", desc: "Tonjolan tulang di belakang kepala tempat perlekatan ligamentum nuchae" },
+        { term: "Linea Nuchalis Superior", desc: "Garis horizontal di os occipitale untuk perlekatan otot leher" },
+        { term: "Linea Nuchalis Inferior", desc: "Garis di bawah superior untuk perlekatan otot tambahan" },
+        { term: "Foramen Mastoideum", desc: "Jalur pembuluh darah emissary" },
+        { term: "Condylus Occipitalis", desc: "Tonjolan bulat yang berartikulasi dengan vertebra atlas (C1)" },
+      ]},
+      
+      { heading: "Anatomi Cranium Tampak Superior & Basis Interna Calvaria", image: "https://i.ibb.co.com/gbV2ZFK8/Cuplikan-layar-. .png", highlights: [
+        { term: "Os Frontale", desc: "Membentuk anterior calvaria (kubah tengkorak)" },
+        { term: "Os Parietale", desc: "Membentuk atap dan sisi calvaria" },
+        { term: "Os Occipitale", desc: "Membentuk posterior calvaria" },
+        { term: "Sutura Coronalis", desc: "Menghubungkan os frontale dengan os parietale" },
+        { term: "Sutura Sagittalis", desc: "Di garis tengah menghubungkan kedua os parietale" },
+        { term: "Sutura Lambdoidea", desc: "Menghubungkan os parietale dengan os occipitale" },
+        { term: "Bregma", desc: "Pertemuan sutura coronalis dan sagittalis" },
+        { term: "Foramen Parietale", desc: "Lubang kecil pada os parietale untuk pembuluh darah emissary" },
+        { term: "Crista Frontalis", desc: "Tempat perlekatan falx cerebri" },
+        { term: "Sulcus Sinus Sagittalis Superioris", desc: "Alur untuk sinus vena dural" },
+        { term: "Sulci Arteriosi", desc: "Jejak arteri meningea media" },
+        { term: "Foveolae Granulares", desc: "Lokasi granulasi araknoid" },
+      ]},
+      
+      { heading: "Basis Cranii Interna (Fossa Cranii Anterior, Media, Posterior)", image: "https://i.ibb.co.com/Z1wNRLwb/Cuplikan-layar-. .png", highlights: [
+        { term: "Fossa Cranii Anterior", desc: "Dibentuk oleh os frontale, os ethmoidale, os sphenoidale. Menopang lobus frontalis otak. Berisi foramen magnum celata (lubang untuk nervus olfactorius)" },
+        { term: "Fossa Cranii Media", desc: "Dibentuk oleh os sphenoidale dan pars petrosa os temporale. Menopang lobus temporalis dan hipofisis. Berisi sella turcica untuk gland pituitary" },
+        { term: "Fossa Cranii Posterior", desc: "Dibentuk oleh os occipitale dan pars petrosa os temporale. Menopang cerebellum, pons, medulla oblongata. Berisi foramen magnum untuk medulla spinalis" },
+        { term: "Lamina Cribrosa Ethmoidalis", desc: "Berlubang-lubang untuk olfactory nerves di fossa anterior" },
+        { term: "Jugum Sphenoidale & Ala Minor", desc: "Batas antara fossa anterior dan media" },
+        { term: "Dorsum Sellae & Sella Turcica", desc: "Tempat hipofisis (pituitary gland)" },
+        { term: "Clivus", desc: "Slope posterior di sphenoidale mengarah ke foramen magnum" },
+        { term: "Foramen Magnum", desc: "Jalur utama medulla spinalis, arteri vertebralis, nervus accessorius" },
+        { term: "Sulcus Carotis", desc: "Alur untuk carotid artery dalam fossa media" },
+        { term: "Foramen Ovale, Spinosum, Lacerum", desc: "Jalur penting untuk saraf dan pembuluh darah" },
+      ]},
+      
+      { heading: "Basis Cranii Externa (Tampak Inferior)", image: "https://i.ibb.co.com/bMTN6YGD/Cuplikan-layar-. .png", highlights: [
+        { term: "Palatum Durum", desc: "Dibentuk oleh maxilla dan os palatinum, membentuk atap mulut" },
+        { term: "Maxilla", desc: "Tulang besar membentuk kerangka wajah atas dan gigi atas" },
+        { term: "Os Palatinum", desc: "Melengkapi palatum durum di posterior" },
+        { term: "Vomer", desc: "Membentuk septum hidung bagian inferior" },
+        { term: "Concha Nasalis Inferior", desc: "Turbinat inferior dalam rongga hidung" },
+        { term: "Os Sphenoidale", desc: "Kompleks, melindungi pituitary gland dan saluran penting" },
+        { term: "Foramen Ovale", desc: "Untuk mandibular division of trigeminal nerve (CN V3)" },
+        { term: "Foramen Spinosum", desc: "Untuk middle meningeal artery" },
+        { term: "Foramen Lacerum", desc: "Untuk internal carotid artery bagian proximal" },
+        { term: "Foramen Magnum", desc: "Jalah utama medulla spinalis, arteri vertebralis" },
+        { term: "Pars Petrosa Os Temporale", desc: "Melindungi organ pendengaran dan vestibular" },
+        { term: "Mastoid Process", desc: "Tonjolan untuk perlekatan otot sternocleidomastoid" },
+        { term: "Styloid Process", desc: "Tonjolan untuk perlekatan ligamen dan otot" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif Cranium", models: [
+        { title: "Model 3D Cranium Lengkap", link: "https://skfb.ly/pGuvW", button: "Buka Model Cranium 3D Interaktif" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Fraktur Kepala", desc: "Trauma kepala dapat menyebabkan patah tulang tengkorak. Tanda: pendarahan, benjol, nyeri parah, kehilangan kesadaran. Risk: intracranial bleeding, brain injury" },
+        { term: "Fontanella pada Bayi", desc: "Area lunak di kepala bayi tempat tulang belum menyatu. Anterior fontanelle normalnya menutup pada 18-24 bulan, posterior pada 2-3 bulan. Fontanelle besar bisa indikasi hydrocephalus atau infeksi" },
+        { term: "Depressed Fracture", desc: "Patah tulang tengkorak yang tertekan masuk. Risiko: luka pada meninges dan otak di bawahnya" },
+        { term: "Linear Fracture", desc: "Patah garis lurus pada tulang tengkorak. Biasanya tidak perlu operasi jika tidak displaced" },
+        { term: "Basilar Skull Fracture", desc: "Patah basis cranii yang serius. Gejala: battle sign (memar di mastoid), raccoon eyes (memar di sekitar mata), pendarahan dari hidung/telinga, CSF rhinorrhea/otorrhea" },
+        { term: "Epidural Hematoma", desc: "Pendarahan antara skull dan dura dari rupture middle meningeal artery. Emergency, perlu operasi urgent. Presentation: 'lucid interval' kemudian deterioration" },
+        { term: "Subdural Hematoma", desc: "Pendarahan antara dura dan brain surface. Acute (gejala <3 hari), subacute, chronic. Risk: elderly, alcoholics, anticoagulation therapy" },
+        { term: "Landmark Penting", desc: "Dokter gunakan tonjolan tulang kepala (nasion, glabella, bregma, lambda, inion) untuk panduan saat pemeriksaan, injeksi, atau procedural guidance" },
+        { term: "Palpasi Struktur", desc: "Sutura dapat dipalpasi pada bayi dan anak-anak. Pada dewasa, sutura tertanam di dalam tulang sehingga sulit dipalpasi" },
+      ]},
+    ],
+    quiz: [
+      { q: "Berapa jumlah tulang neurocranium?", options: ["6","8","10","14"], answer: 1 },
+      { q: "Sutura yang menghubungkan os frontale dengan os parietale?", options: ["Sagitalis","Lambdoidea","Coronalis","Squamosa"], answer: 2 },
+      { q: "Foramen magnum terdapat pada tulang?", options: ["Frontale","Sphenoidale","Occipitale","Temporale"], answer: 2 },
+      { q: "Mandibula termasuk bagian?", options: ["Neurocranium","Viscerocranium","Axial lainnya","Appendicular"], answer: 1 },
+      { q: "Berapa jumlah tulang viscerocranium?", options: ["8","12","14","16"], answer: 2 },
+      { q: "Sella turcica adalah tempat?", options: ["Cerebellum","Pituitary gland (hipofisis)","Medulla oblongata","Olfactory nerve"], answer: 1 },
+      { q: "Fossa cranii media dibentuk oleh tulang?", options: ["Frontale & Ethmoidale","Sphenoidale & Pars Petrosa Temporale","Occipitale saja","Parietale dominan"], answer: 1 },
+      { q: "Lamina cribrosa adalah bagian dari?", options: ["Os frontale","Os sphenoidale","Os ethmoidale","Os occipitale"], answer: 2 },
+      { q: "Foramen ovale dan foramen spinosum terletak pada?", options: ["Os frontale","Os temporale","Os sphenoidale","Os occipitale"], answer: 2 },
+      { q: "Palatum durum dibentuk oleh?", options: ["Maxilla saja","Os palatinum saja","Maxilla & Os palatinum","Vomer & Os nasale"], answer: 2 },
+    ]
+  },
+  vertebralis: {
+    title: "Regio Vertebralis",
+    intro: "Columna vertebralis (tulang belakang) terdiri dari 33 vertebra yang membentuk sumbu utama tubuh dan melindungi medulla spinalis. Tidak lurus sempurna tetapi membentuk lengkungan fisiologis untuk efisiensi mekanik.",
+    sections: [
+      { heading: "Gambaran Umum Columna Vertebralis", image: "https://i.ibb.co.com/1GNRNFvg/vertbra.png", text: "Columna vertebralis terdiri dari 33 ruas vertebra yang tersusun bertingkat dengan bantalan cartilago (discus intervertebralis) di antaranya. Struktur ini memungkinkan fleksibilitas sambil memberikan perlindungan pada medulla spinalis." },
+      
+      { heading: "Pembagian Vertebra & Jumlah", highlights: [
+        { term: "Cervicalis (C1–C7)", desc: "7 vertebra leher; C1 disebut Atlas (tidak punya corpus), C2 disebut Axis (punya dens)" },
+        { term: "Thoracalis (T1–T12)", desc: "12 vertebra dada, berartikulasi dengan costae melalui fovea costalis" },
+        { term: "Lumbalis (L1–L5)", desc: "5 vertebra pinggang, paling besar dan kokoh, menopang beban tubuh terbesar" },
+        { term: "Sacralis (S1–S5)", desc: "5 vertebra menyatu membentuk os sacrum (satu tulang besar), basis columna vertebralis" },
+        { term: "Coccygea (Co1–Co4)", desc: "4 vertebra kecil menyatu membentuk os coccygis (tulang tungging/ekor), vestigial" },
+      ]},
+      
+      { heading: "Lengkung Fisiologis Columna Vertebralis", highlights: [
+        { term: "Lordosis Cervicalis", desc: "Melengkung ke ventral (cembung ke depan) di regio leher" },
+        { term: "Kyphosis Thoracalis", desc: "Melengkung ke dorsal (cembung ke belakang) di regio dada" },
+        { term: "Lordosis Lumbalis", desc: "Melengkung ke ventral (cembung ke depan) di regio pinggang" },
+        { term: "Kyphosis Sacralis", desc: "Melengkung ke dorsal (cembung ke belakang) pada sacrum" },
+      ]},
+      
+      { heading: "Struktur Vertebra Tipikal", text: "Setiap vertebra tipikal terdiri dari: (1) Corpus vertebrae - badan tulang yang menanggung beban, (2) Arcus vertebrae - lengkung belakang membentuk terowongan, (3) Processus spinosus - tonjolan belakang yang dapat dipalpasi, (4) Processus transversus - tonjolan ke samping untuk perlekatan otot, (5) Foramen vertebrale - lubang yang membentuk canalis vertebralis untuk medulla spinalis." },
+      
+      { heading: "Vertebra Cervicalis I (Atlas) – C1", image: "https://i.ibb.co.com/nM9SBPc2/atlas.png", highlights: [
+        { term: "Ciri Khas Unik", desc: "Tidak memiliki corpus vertebrae seperti vertebra lainnya" },
+        { term: "Arcus Anterior & Arcus Posterior", desc: "Menggantikan corpus vertebrae, membentuk cincin atlas" },
+        { term: "Tuberculum Anterior & Tuberculum Posterior", desc: "Tonjolan pada arcus anterior dan posterior" },
+        { term: "Fovea Articularis Superior", desc: "Permukaan sendi atas yang menerima condylus occipitalis untuk sendi atlantooccipital" },
+        { term: "Massa Lateralis", desc: "Bagian lateral atlas yang kuat" },
+        { term: "Fovea Dentis", desc: "Cekungan di depan massa lateralis yang menerima dens dari axis (C2)" },
+      ]},
+      
+      { heading: "Vertebra Cervicalis II (Axis) – C2", image: "https://i.ibb.co.com/jPF1n2Zy/axis.png", highlights: [
+        { term: "Dens (Processus Odontoideus)", desc: "Tonjolan tajam yang menonjol cranial, modifikasi dari corpus vertebrae C1, berfungsi sebagai poros rotasi" },
+        { term: "Facies Articularis Anterior Dentis", desc: "Permukaan anterior dens yang berartikulasi dengan tuberculum anterior atlas" },
+        { term: "Facies Articularis Posterior Dentis", desc: "Permukaan posterior dens yang berartikulasi dengan lig. transversum atlantis" },
+        { term: "Fungsi Axis", desc: "Sebagai 'poros' yang memungkinkan rotasi kepala saat bergerak 'tidak' (shaking head no)" },
+      ]},
+      
+      { heading: "Vertebra Cervicalis III-VI (C3-C6)", image: "https://i.ibb.co.com/Rk8ytzVP/cervicalis-3-6.png", highlights: [
+        { term: "Corpus Vertebrae", desc: "Segiempat, kecil & pendek dibanding vertebra lainnya" },
+        { term: "Foramen Vertebrale", desc: "Segitiga dan relatif besar untuk melewatkan medulla spinalis" },
+        { term: "Processus Transversus", desc: "Memiliki foramen transversarium khas pada cervicalis - jalur a. vertebralis menuju cranium" },
+        { term: "Tuberculum Anterior & Posterior", desc: "Terletak di processus transversus, dipisahkan oleh sulcus spinalis" },
+        { term: "Processus Spinosus", desc: "Pendek dan sering bercabang dua (bifida)" },
+      ]},
+      
+      { heading: "Vertebra Cervicalis VII (C7) - Vertebra Prominens", image: "https://i.ibb.co.com/d0NN77YP/cervicalis-7.png", highlights: [
+        { term: "Nama Alternatif", desc: "Disebut 'vertebra prominens' karena processus spinosusnya paling menonjol" },
+        { term: "Processus Spinosus Panjang", desc: "Lebih panjang dibanding C3-C6, mudah dipalpasi dari luar kulit di bagian belakang leher" },
+        { term: "Tuberculum Posterior Panjang", desc: "Tuberositas yang dapat diraba sebagai landmark klinis" },
+        { term: "Landmark Klinis", desc: "Digunakan sebagai acuan menghitung vertebra cervicalis saat pemeriksaan fisik" },
+      ]},
+      
+      { heading: "Vertebra Thoracalis (T1-T12)", image: "https://i.ibb.co.com/b5vGT7Bg/torakalis.png", highlights: [
+        { term: "Corpus Vertebrae", desc: "Berukuran sedang, lebih besar dari cervical tapi lebih kecil dari lumbal" },
+        { term: "Foramen Vertebrale", desc: "Bulat dan sedang, lebih kecil dari cervical" },
+        { term: "Processus Spinosus", desc: "Panjang & runcing (pointed), mengarah ke caudal, overlapping dengan vertebra di bawahnya" },
+        { term: "Fovea Costalis", desc: "Permukaan articular untuk persendian dengan costae (tulang rusuk), terletak pada corpus & processus transversus" },
+        { term: "Ciri Pengenal", desc: "Fovea costalis adalah tanda khas vertebra thoracalis untuk diferensiasi dengan regio lainnya" },
+      ]},
+      
+      { heading: "Vertebra Lumbalis (L1-L5)", image: "https://i.ibb.co.com/93ssVXCk/lumbal.png", highlights: [
+        { term: "Corpus Vertebrae", desc: "Paling besar di columna vertebralis, bentuk ginjal (reniform) melintang, dorsal lebih rendah dari ventral" },
+        { term: "Processus Spinosus", desc: "Besar, pendek, & persegi empat, mengarah langsung posterior (tidak overlapping)" },
+        { term: "Processus Mamillaris", desc: "Tonjolan tumpul pada tepi dorsal processus articularis superior, khas pada lumbal" },
+        { term: "Processus Transversus", desc: "Arahnya melintang (lateral), memanjang jauh ke samping" },
+        { term: "Processus Accesorius", desc: "Tonjolan halus pada pangkal processus mamillaris di sebelah caudolateral" },
+        { term: "Fungsi", desc: "Menopang beban terbesar dari tubuh, terlibat dalam gerakan fleksi-ekstensi & rotasi punggung" },
+      ]},
+      
+      { heading: "Vertebra Sacralis / Os Sacrum", image: "https://i.ibb.co.com/hFZrNrLd/sacrum.png", highlights: [
+        { term: "Komposisi", desc: "Terdiri dari 5 ruas vertebra (S1-S5) yang menyatu menjadi satu tulang segitiga besar (os sacrum)" },
+        { term: "Bentuk & Orientasi", desc: "Segitiga dengan basis (permukaan luas) di cranial menghadap ke spine, apex (ujung) di caudal" },
+        { term: "Facies Pelvicum (Anterior)", desc: "Permukaan depan yang menghadap ke pelvis, smooth & concave" },
+        { term: "Facies Dorsalis (Posterior)", desc: "Permukaan belakang yang rough, tempat perlekatan ligamen & otot" },
+        { term: "Foramina Sacralia", desc: "Anterior & posterior - lubang untuk passage of sacral nerves" },
+        { term: "Crista Sacralis", desc: "Tiga buah: media (dari processus spinosus), articularis (dari processus articularis), lateral (dari processus transversus)" },
+        { term: "Hiatus Sacralis", desc: "Lubang di bagian caudal sacrum karena defect processus spinosus S5" },
+        { term: "Fungsi", desc: "Basis columna vertebralis, menghubungkan spine dengan pelvis, menopang organ abdominal & pelvic" },
+      ]},
+      
+      { heading: "Vertebra Coccygea / Os Coccygis", image: "https://i.ibb.co.com/QFqtwqWh/cosigeus.png", highlights: [
+        { term: "Komposisi", desc: "Terdiri dari 4 ruas vertebra (Co1-Co4) yang menyatu menjadi tulang kecil os coccygis (tulang ekor)" },
+        { term: "Ukuran & Bentuk", desc: "Paling kecil dari columna vertebralis, berbentuk segitiga melipat ke ventral" },
+        { term: "Cornu Coccygeus", desc: "Modifikasi processus articularis superior & inferior, menonjol seperti tanduk" },
+        { term: "Processus Transversus", desc: "Masih tersisa pada vertebra coccygea I sebagai sisa struktur vertebra normal" },
+        { term: "Fungsi", desc: "Vestigial (sisa evolusi), minimal function, insertion untuk beberapa ligamen & otot minimal" },
+        { term: "Klinis", desc: "Dapat menjalani trauma saat jatuh ke belakang (coccydynia), jarang perlu intervensi" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif Columna Vertebralis", models: [
+        { title: "Model 3D Columna Vertebralis Lengkap", link: "https://skfb.ly/o76NX", button: "Buka Model Columna Lengkap 3D" },
+        { title: "Model 3D Vertebra Cervicalis I (Atlas)", link: "https://skfb.ly/6tzSP", button: "Buka Model Atlas 3D" },
+        { title: "Model 3D Vertebra Cervicalis II (Axis)", link: "https://skfb.ly/6tzSW", button: "Buka Model Axis 3D" },
+        { title: "Model 3D Vertebra Thoracalis", link: "https://skfb.ly/6tzSx", button: "Buka Model Thoracalis 3D" },
+        { title: "Model 3D Vertebra Lumbalis", link: "https://skfb.ly/6pDzB", button: "Buka Model Lumbalis 3D" },
+        { title: "Model 3D Vertebra Sacralis / Sacrum", link: "https://skfb.ly/Mv9W", button: "Buka Model Sacrum 3D" },
+        { title: "Model 3D Vertebra Coccygea / Coccyx", link: "https://skfb.ly/6YxyS", button: "Buka Model Coccyx 3D" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Cedera Leher (Cervical Injury)", desc: "Whiplash dari kecelakaan atau jatuh bisa melukai cervical vertebrae. Tanda: nyeri leher, stiffness, radiating pain ke lengan, kesemutan" },
+        { term: "Atlas/Axis Fracture", desc: "Fraktur pada C1 atau C2 dari trauma berat (motor accident, falls from height). Risk: severe neurological deficit atau fatal" },
+        { term: "Hernia Discus Intervertebralis", desc: "Bantalan antar vertebra (nucleus pulposus) menonjol & menekan saraf. Cause: degeneration, trauma, heavy lifting. Gejala: acute pain, radiating pain, neurological deficit" },
+        { term: "Spondylosis (Degenerative Disc Disease)", desc: "Penuaan normal dari intervertebral discs, spondylophyte formation. Gejala: chronic back pain, stiffness, limited ROM" },
+        { term: "Stenosis Spinalis", desc: "Penyempitan canalis vertebralis menekan spinal cord/nerves. Cause: spondylosis, ligament hypertrophy, disc herniation. Gejala: claudication, weakness, incontinence" },
+        { term: "Compression Fracture", desc: "Vertebral body crush dari jatuh tinggi atau osteoporosis. Common di thoracal/lumbal. Risk: kyphotic deformity, neurological deficit" },
+        { term: "Lumbar Puncture (LP)", desc: "Dokter tusuk columna di space L3-L4 (atau L4-L5) untuk ambil CSF untuk diagnosis meningitis, encephalitis. Pasien prone atau sitting forward flexion" },
+        { term: "Epidural Injection", desc: "Suntik steroid/anestesi di epidural space untuk pain relief pada radiculopathy. Guided fluoroscopy atau ultrasound untuk accuracy" },
+        { term: "Facet Joint Syndrome", desc: "Arthrosis dari facet joints antara vertebrae, causing referred back pain. Treated dengan facet joint injections atau medial branch blocks" },
+      ]},
+    ],
+    quiz: [
+      { q: "Berapa jumlah total vertebra di columna vertebralis?", options: ["24","31","33","35"], answer: 2 },
+      { q: "Atlas adalah nama untuk vertebra?", options: ["C1","C2","C7","T1"], answer: 0 },
+      { q: "Vertebra terbesar terdapat pada regio?", options: ["Cervicalis","Thoracalis","Lumbalis","Sacralis"], answer: 2 },
+      { q: "Kyphosis thoracalis berarti melengkung ke arah?", options: ["Ventral","Dorsal","Lateral","Medial"], answer: 1 },
+      { q: "Os sacrum terbentuk dari penyatuan berapa vertebra?", options: ["3","4","5","6"], answer: 2 },
+      { q: "Processus spinosus C7 disebut?", options: ["Dens","Axis","Vertebra Prominens","Atlas"], answer: 2 },
+      { q: "Foramen transversarium khas pada vertebra?", options: ["Thoracalis","Cervicalis","Lumbalis","Sacralis"], answer: 1 },
+      { q: "Dens (odontoid process) merupakan modifikasi dari?", options: ["Processus spinosus C1","Corpus vertebrae C1","Arcus posterior C2","Processus transversus C2"], answer: 1 },
+      { q: "Lumbar puncture biasanya dilakukan di space?", options: ["L1-L2","L2-L3","L3-L4 atau L4-L5","L5-S1"], answer: 2 },
+      { q: "Fovea costalis adalah permukaan articular untuk?", options: ["Sternum","Costae (rusuk)","Processus spinosus","Ligamen costotransverse"], answer: 1 },
+    ]
+  },
+  costae: {
+    title: "Regio Costae",
+    intro: "Costae (tulang rusuk) membentuk dinding thorax bersama sternum dan vertebra thoracalis. Terdiri dari 12 pasang yang melekat pada sternum (ventral) dan vertebrae thoracalis (dorsal).",
+    sections: [
+      { heading: "Gambaran Umum Costae", text: "Costae terdiri dari 12 pasang (kiri dan kanan) yang melekat pada sternum di ventral dan vertebrae thoracalis di dorsal. Di antara costae terdapat spatium intercostalis (SIC I sampai SIC XI). Ujung sternal costa 1-10 terhubung dengan cartilago costae." },
+      
+      { heading: "Klasifikasi Costae Berdasarkan Perlekatannya", image: "https://i.ibb.co.com/Df43Yqhk/Picture11.png", highlights: [
+        { term: "Costae Verae (1–7)", desc: "Tulang rusuk sejati, melekat langsung ke sternum via cartilago costae" },
+        { term: "Costae Spuriae (8–10)", desc: "Tulang rusuk palsu, melekat ke cartilago costae di cranialisnya (costa di atasnya)" },
+        { term: "Costae Fluctuantes (11–12)", desc: "Tulang rusuk melayang, ujung anterior bebas tanpa melekat ke sternum" },
+      ]},
+      
+      { heading: "Morfologi Costa", image: "https://i.ibb.co.com/VYSZnBMT/Cuplikan-layar-. .png", highlights: [
+        { term: "Caput Costae", desc: "Kepala costa dengan facies articularis untuk berartikulasi dengan corpus vertebrae dan discus intervertebralis" },
+        { term: "Collum Costae", desc: "Leher costa, bagian sempit antara caput dan tuberculum" },
+        { term: "Corpus Costae", desc: "Badan costa, bagian utama tulang rusuk yang melengkung" },
+        { term: "Tuberculum Costae", desc: "Tonjolan antara collum dan corpus costae, memiliki facies articularis untuk berartikulasi dengan processus transversus vertebrae thoracalis" },
+        { term: "Angulus Costae", desc: "Sudut yang terbentuk karena costa berbelok ke medial, terletak di bagian posterolateral" },
+        { term: "Sulcus Costae", desc: "Alur di margo inferior bagian medial costa, menjadi jalur lewatnya arteri, vena, dan nervus intercostalis" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif Costae", models: [
+        { title: "Model 3D Os Costae", link: "https://skfb.ly/6xRPL", button: "Buka Model Costae 3D" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Rusuk", desc: "Trauma atau jatuh bisa menyebabkan rusuk patah. Tanda: sakit saat napas dalam, lebam, deformitas" },
+        { term: "Paru-Paru Kolaps (Pneumothorax)", desc: "Rusuk patah bisa tusuk paru dan buat paru kempes. Gejala: sesak napas parah, nyeri dada, desaturasi oksigen" },
+        { term: "Hemothorax", desc: "Pendarahan ke dalam rongga thorax dari pembuluh darah rusak akibat patah rusuk" },
+        { term: "Blok Saraf Intercostal", desc: "Dokter suntik anestesi lokal di area sulcus costae untuk blok nervus intercostalis, menghilangkan nyeri setelah operasi atau patah rusuk" },
+        { term: "Torake Torakosentesis", desc: "Dokter tusuk melalui spatium intercostalis untuk ambil cairan atau udara dari rongga thorax untuk diagnosis atau terapi" },
+        { term: "Operasi Dada", desc: "Dokter buat sayatan di area intercostal untuk akses jantung, paru, atau organ mediastinum selama operasi" },
+      ]},
+    ],
+    quiz: [
+      { q: "Berapa total pasang costae pada manusia?", options: ["10","12","14","7"], answer: 1 },
+      { q: "Costae verae berjumlah?", options: ["5 pasang","7 pasang","3 pasang","10 pasang"], answer: 1 },
+      { q: "Costae fluctuantes adalah costae nomor?", options: ["1–7","8–10","11–12","10–12"], answer: 2 },
+      { q: "Sulcus costae berfungsi sebagai tempat?", options: ["Perlekatan otot","Lewat pembuluh darah dan saraf","Sendi","Produksi darah"], answer: 1 },
+      { q: "Costae spuriae melekat ke?", options: ["Sternum langsung","Cartilago costae di cranialisnya","Vertebra saja","Tidak melekat"], answer: 1 },
+      { q: "Tuberculum costae berartikulasi dengan?", options: ["Corpus vertebrae","Processus transversus vertebrae thoracalis","Sternum","Discus intervertebralis"], answer: 1 },
+      { q: "Caput costae berartikulasi dengan?", options: ["Processus transversus","Corpus & discus intervertebralis","Spatium intercostalis","Cartilago costae"], answer: 1 },
+      { q: "Angulus costae terletak di bagian?", options: ["Anterior","Posterolateral","Medial","Distal"], answer: 1 },
+    ]
+  },
+  sternum: {
+    title: "Regio Sternum",
+    intro: "Sternum (tulang dada) adalah tulang pipih di garis tengah anterior dinding thorax yang berbentuk seperti keris (dagger shape). Berfungsi melindungi jantung, paru, dan pembuluh besar di mediastinum.",
+    sections: [
+      { heading: "Gambaran Umum Sternum", text: "Sternum berbentuk seperti keris dan merupakan tulang pipih yang penting dalam melindungi organ vital di thorax. Sternum terdiri dari 3 bagian utama: Manubrium Sterni (atas), Corpus Sterni (tengah), dan Processus Xiphoideus (ujung bawah)." },
+      
+      { heading: "Pembagian Sternum", highlights: [
+        { term: "Manubrium Sterni", desc: "Bagian atas sternum, tempat articulatio sternoclavicularis (sendi dengan clavicula)" },
+        { term: "Corpus Sterni", desc: "Bagian tengah dan terbesar sternum, tempat articulus dengan costae II-VII" },
+        { term: "Processus Xiphoideus Sterni", desc: "Ujung bawah sternum, awalnya berupa kartilago, bentuk tidak tetap dan tipis, melekat longgar pada corpus sterni" },
+      ]},
+      
+      { heading: "Incisura pada Sternum", highlights: [
+        { term: "Incisura Jugularis Sterni", desc: "Cekungan di tepi craniomedial manubrium sterni, landmark untuk palpasi" },
+        { term: "Incisura Clavicularis", desc: "Cekungan di lateral manubrium sterni, tempat articulatio sternoclavicularis dengan ujung medial clavicula" },
+        { term: "Incisura Costalis I–VII", desc: "Serangkaian cekungan di tepi lateral manubrium dan corpus sterni untuk menerima cartilago costae" },
+      ]},
+      
+      { heading: "Morfologi Sternum Detail", image: "https://i.ibb.co.com/204F0m8F/Whats-App-Image-2026-05-01-at-10-29-34.jpg", highlights: [
+        { term: "Tepi Craniomedial", desc: "Membentuk incisura jugularis sterni, menjadi landmark palpasi di leher" },
+        { term: "Lateral Manubrium", desc: "Terdapat incisura clavicularis untuk articulatio sternoclavicularis (sendi dengan clavicula)" },
+        { term: "Caudal Incisura Clavicularis", desc: "Terdapat incisura costalis I, tempat cartilago costae I berartikulasi" },
+        { term: "Angulus Sterni", desc: "Sudut yang dapat dipalpasi terletak pada pertemuan manubrium dan corpus sterni, setinggi vertebra T4-T5. Patokan penting untuk menghitung ruang intercostalis, karena costae II berartikulasi di sini" },
+        { term: "Tepi Lateral Corpus Sterni", desc: "Terdapat incisura costalis II–VII, tempat articulus dengan cartilago costae II hingga VII" },
+        { term: "Processus Xiphoideus", desc: "Ujung bawah sangat tipis, bentuk sangat bervariasi antar individu, awalnya kartilago lalu mengalami ossifikasi" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif Sternum", models: [
+        { title: "Model 3D Sternum Lengkap", link: "https://sketchfab.com/3d-models/sternum-394e7d34bf8a4614be125d90fa11e87e", button: "Buka Model Sternum 3D" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Dada", desc: "Trauma berat atau kecelakaan bisa patahkan sternum. Tanda: sakit dada, sesak napas, deformitas. Risiko: cedera jantung atau pembuluh darah di mediastinum" },
+        { term: "Mediastinitis", desc: "Infeksi mediastinum setelah operasi jantung terbuka (sternotomy). Tanda: demam tinggi, cairan dari luka, nyeri dada" },
+        { term: "Sternotomy (Bedah Sternum)", desc: "Dokter potong sternum di garis tengah untuk buka dada dan akses jantung, paru, atau pembuluh besar. Postoperatif: tulang disambung dengan kawat stainless steel" },
+        { term: "Angulus Sterni sebagai Landmark", desc: "Sudut sterni dapat dipalpasi dan menjadi patokan penting untuk menghitung ruang intercostalis. Costae II berartikulasi tepat di angulus sterni" },
+        { term: "Palpasi Incisura Jugularis", desc: "Sebagai panduan untuk menghitung costae dan ruang intercostalis saat pemeriksaan fisik thorax" },
+      ]},
+    ],
+    quiz: [
+      { q: "Sternum terdiri dari berapa bagian utama?", options: ["2","3","4","5"], answer: 1 },
+      { q: "Angulus sterni setinggi vertebra?", options: ["T1-T2","T4-T5","T7-T8","C7"], answer: 1 },
+      { q: "Processus xiphoideus terletak di bagian?", options: ["Atas","Tengah","Bawah","Samping"], answer: 2 },
+      { q: "Articulatio sternoclavicularis terletak di?", options: ["Corpus","Manubrium","Xiphoideus","Angulus"], answer: 1 },
+      { q: "Costae ke berapa yang berartikulasi di angulus sterni?", options: ["1","2","3","5"], answer: 1 },
+      { q: "Incisura jugularis sterni terletak di?", options: ["Lateral manubrium","Craniomedial manubrium","Corpus sterni","Xiphoideus"], answer: 1 },
+      { q: "Processus xiphoideus awalnya berbentuk?", options: ["Tulang padat","Kartilago","Ligamen","Membran"], answer: 1 },
+      { q: "Berapa incisura costalis pada sternum?", options: ["3–5","5–7","7–9","10–12"], answer: 1 },
+    ]
+  },
+  cingulum_superior: {
+    title: "Cingulum Membri Superioris",
+    intro: "Gelang bahu menghubungkan extremitas superior ke skeleton axial, terdiri dari Clavicula dan Scapula.",
+    sections: [
+      { heading: "Gambaran Umum Tulang Penyusun", highlights: [
+        { term: "Clavicula", desc: "Tulang berbentuk S, menghubungkan sternum ke scapula sebagai penopang extremitas superior" },
+        { term: "Scapula", desc: "Tulang pipih segitiga di posterior thorax, membentuk sendi bahu bersama humerus" },
+      ]},
+      { heading: "Os Scapula – Morfologi Umum", image: "https://i.ibb.co.com/0yw3PJ9N/Picture6.png", highlights: [
+        { term: "Bentuk Segitiga", desc: "Tulang pipih berbentuk segitiga dengan 3 sisi dan 3 sudut" },
+        { term: "Margo Superior", desc: "Sisi atas scapula" },
+        { term: "Margo Lateralis (Axillaris)", desc: "Sisi lateral scapula" },
+        { term: "Margo Medialis (Vertebralis)", desc: "Sisi medial scapula menghadap ke garis tengah tubuh" },
+        { term: "Angulus Superior (Medialis)", desc: "Sudut medial atas" },
+        { term: "Angulus Lateralis (Axillaris)", desc: "Sudut lateral tempat cavitas glenoidalis" },
+        { term: "Angulus Inferior", desc: "Sudut bawah scapula" },
+      ]},
+      { heading: "Os Scapula – Aspektus Anterior", image: "https://i.ibb.co.com/gb4nNtby/Picture7.png", highlights: [
+        { term: "Fossa Subscapularis", desc: "Cekungan pada permukaan ventral (anterior) scapula, tempat perlekatan m. subscapularis" },
+        { term: "Processus Coracoideus", desc: "Penonjolan ke arah ventral berbentuk paruh burung gagak, membentuk kompleks coracoacromialis" },
+        { term: "Facies Articularis Acromii", desc: "Permukaan sendi dengan extremitas lateralis clavicula (articulated acromioclavicularis)" },
+        { term: "Incisura Scapulae", desc: "Celah/cekungan di anterior margo superior" },
+      ]},
+      { heading: "Os Scapula – Aspektus Posterior", image: "https://i.ibb.co.com/6JqYWfnP/Picture8.png", highlights: [
+        { term: "Spina Scapulae", desc: "Penonjolan memanjang dari caudomedial ke craniolateral, dapat dipalpasi dari luar kulit" },
+        { term: "Acromion", desc: "Penonjolan pada ujung lateral spina scapulae, membentuk kompleks coracoacromialis" },
+        { term: "Fossa Supraspinata", desc: "Cekungan di cranial (atas) spina scapulae, tempat melekatnya m. supraspinatus" },
+        { term: "Fossa Infraspinata", desc: "Cekungan di caudal (bawah) spina scapulae, tempat melekatnya m. infraspinatus" },
+      ]},
+      { heading: "Os Scapula – Aspektus Lateralis", image: "https://i.ibb.co.com/NnZy7BMh/Picture9.png", highlights: [
+        { term: "Fossa (Cavitas) Glenoidalis", desc: "Cekungan pada superolateral scapula, membentuk sendi bahu dengan caput humeri" },
+        { term: "Tuberculum Supraglenoidalis", desc: "Tonjolan halus di superior fossa glenoidalis, perlekatan biceps tendon proksimal" },
+        { term: "Tuberculum Infraglenoidalis", desc: "Tonjolan halus di inferior fossa glenoidalis, perlekatan triceps tendon proksimal" },
+      ]},
+      { heading: "Extremitas Lateralis Clavicula", image: "https://i.ibb.co.com/qYLTGd4p/Cuplikan-layar-. .png", highlights: [
+        { term: "Bentuk S", desc: "Tulang berbentuk huruf S saat dipandang dari anterior" },
+        { term: "Extremitas Medialis (Sternalis)", desc: "Ujung medial berartikulasi dengan incisura clavicularis sterni" },
+        { term: "Extremitas Lateralis (Acromialis)", desc: "Ujung lateral berartikulasi dengan facies articularis acromii scapulae" },
+        { term: "Tuberositas Costalis", desc: "Tonjolan untuk perlekatan ligamen" },
+        { term: "Sulcus Subclavii", desc: "Alur pada permukaan inferior untuk lewatnya pembuluh darah" },
+        { term: "Tuberositas Coracoidea", desc: "Tonjolan untuk perlekatan ligamen coracoclavicularis" },
+      ]},
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Tulang Selangka", desc: "Jatuh atau trauma bahu sering patahkan clavicula. Gejala: benjol di atas, sakit saat gerak, kelumpuhan sementara otot bahu" },
+        { term: "Dislokasi Sendi Bahu", desc: "Caput humeri bisa keluar dari cavitas glenoidalis saat trauma. Gejala: sakit parah, lengan tidak bisa gerak" },
+        { term: "Nyeri Bahu Kronis", desc: "Otot rotator bahu bisa tegang atau cedera dari kerja berat berulang. Menyebabkan sakit saat gerak ke atas" },
+        { term: "Impingement Syndrome", desc: "Otot atau tendon terjepit di bawah acromion. Gejala: nyeri saat angkat lengan, kelemahan" },
+        { term: "Suntik Obat Bahu", desc: "Dokter suntik obat anti peradangan ke articulation glenohumeral untuk kurangi nyeri dan radang" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Cingulum Superior", models: [
+        { title: "Model 3D Os Scapula", link: "https://skfb.ly/6tAJV", button: "Buka Model Scapula 3D" },
+        { title: "Model 3D Os Clavicula", link: "https://skfb.ly/6D7w8", button: "Buka Model Clavicula 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Cingulum membri superioris terdiri dari tulang?", options: ["Clavicula & Humerus","Clavicula & Scapula","Scapula & Humerus","Humerus & Radius"], answer: 1 },
+      { q: "Acromion merupakan bagian dari?", options: ["Clavicula","Humerus","Scapula","Sternum"], answer: 2 },
+      { q: "Cavitas glenoidalis berfungsi untuk?", options: ["Perlekatan otot","Sendi bahu dengan caput humeri","Lewat saraf","Produksi darah"], answer: 1 },
+      { q: "Clavicula berbentuk?", options: ["Lurus","S","L","Segitiga"], answer: 1 },
+      { q: "Processus coracoideus menyerupai?", options: ["Paruh gagak","Sayap","Tanduk","Cangkang"], answer: 0 },
+      { q: "Fossa subscapularis terletak di aspektus?", options: ["Posterior","Anterior","Lateral","Superior"], answer: 1 },
+      { q: "Spina scapulae dapat dipalpasi dari?", options: ["Luar kulit","Dalam kulit","Hanya dengan imaging","Tidak bisa dipalpasi"], answer: 0 },
+      { q: "Extremitas lateralis clavicula berartikulasi dengan?", options: ["Sternum","Facies articularis acromii","Costae 1","Manubrium"], answer: 1 },
+    ]
+  },
+
+  brachii: {
+    title: "Regio Brachii",
+    intro: "Regio brachii (lengan atas) adalah kawasan yang dibentuk oleh os humerus, tulang panjang pada ekstremitas superior yang menghubungkan articulatio humeri (bahu) dan articulatio cubiti (siku). Berfungsi dalam pergerakan lengan dan merupakan tempat perlekatan otot-otot lengan. Deltoidea merupakan regio yang membungkus humerus proksimal.",
+    sections: [
+      { heading: "Gambaran Umum Os Humerus", text: "Os humerus adalah tulang panjang pada ekstremitas superior yang membentuk lengan atas. Terdiri dari 3 bagian utama: epiphysis proximal, corpus (diaphysis), dan epiphysis distal. Fungsinya adalah memungkinkan pergerakan lengan (fleksi, ekstensi, abduksi, rotasi), menjadi tempat perlekatan otot-otot lengan, dan membentuk sendi bahu serta sendi siku.", models: [{ title: "Model 3D Interaktif Os Humerus", link: "https://skfb.ly/6r77O", button: "Buka Model Os Humerus 3D" }] },
+      
+      { heading: "Epiphysis Proximal Humeri (Humerus Proksimal)", image: "https://i.ibb.co.com/4gYn56Z4/proximal.png", highlights: [
+        { term: "Caput Humeri", desc: "Tonjolan bulat pada ujung proksimal, mengarah ke dorsomedial, berartikulasi dengan fossa glenoidalis os scapulae" },
+        { term: "Collum Anatomicum", desc: "Cekungan tepat di inferior caput humeri" },
+        { term: "Tuberculum Majus", desc: "Tonjolan ke lateral di caudal collum anatomicum humeri yang dapat diinspeksi dan dipalpasi dari luar" },
+        { term: "Tuberculum Minus", desc: "Tonjolan ke medial di caudal collum anatomicum humeri, di sebelah medial tuberculum majus" },
+        { term: "Sulcus Intertubercularis", desc: "Alur di antara tuberculum majus dan tuberculum minus" },
+        { term: "Collum Chirurgicum", desc: "Cekungan di inferior tuberculum majus dan tuberculum minus, dilalui oleh nervus axillaris dan arteria circumflexa humeri posterior - sering fraktur" },
+      ]},
+      
+      { heading: "Corpus Humeri (Diaphysis)", image: "https://i.ibb.co.com/RKXYCmK/Picture2.jpg", highlights: [
+        { term: "Tuberositas Deltoidea", desc: "Tonjolan di bagian lateral tempat perlekatan m. deltoideus" },
+        { term: "Sulcus Spiralis (Sulcus Nervi Radialis)", desc: "Alur di bagian dorsal corpus humeri dengan arah craniomedial menuju caudolateral, dilalui oleh nervus radialis dan arteria profunda brachii" },
+      ]},
+      
+      { heading: "Epiphysis Distal Humeri – Aspektus Anterior", image: "https://i.ibb.co.com/gbGwy40C/Cuplikan-layar-. .png", highlights: [
+        { term: "Capitulum Humeri", desc: "Tonjolan pada ujung laterodistal os humeri, berartikulasi dengan os radius" },
+        { term: "Fossa Radialis", desc: "Cekungan pada superior capitulum humeri, ditempati oleh caput radii pada saat articulatio cubiti dalam keadaan fleksi" },
+        { term: "Trochlea Humeri", desc: "Tonjolan pada ujung mediodistal os humeri, berartikulasi dengan os ulna" },
+        { term: "Fossa Coronoidea", desc: "Cekungan pada superior trochlea humeri, ditempati oleh incisura coronoidea ulnae pada saat articulatio cubiti dalam keadaan fleksi" },
+      ]},
+      
+      { heading: "Epiphysis Distal Humeri – Aspektus Posterior", image: "https://i.ibb.co.com/bgN0b3W1/Cuplikan-layar-. .png", highlights: [
+        { term: "Epicondylus Medialis Humeri", desc: "Tonjolan di medial trochlea humeri, tempat perlekatan otot-otot flexor pergelangan tangan" },
+        { term: "Epicondylus Lateralis Humeri", desc: "Tonjolan di lateral trochlea humeri, tempat perlekatan otot-otot extensor pergelangan tangan" },
+        { term: "Sulcus Nervi Ulnaris", desc: "Sulcus di bagian lateral epicondylus medialis humeri yang dilalui oleh nervus ulnaris" },
+        { term: "Fossa Olecrani", desc: "Cekungan pada bagian posterior distal os humerus, ditempati oleh olecranon pada saat articulatio cubiti dalam keadaan ekstensi" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Fraktur Humerus Proksimal", desc: "Jatuh atau trauma lengan bisa patahkan bone arm atas. Gejala: benjol besar, memar luas, nyeri parah saat gerak. Berisiko avascular necrosis caput humeri" },
+        { term: "Fraktur Collum Chirurgicum", desc: "Patah di 'surgical neck' dari jatuh atau pukulan. Risiko kerusakan brachial artery dan radial nerve injury. Presentasi: guarding, crepitus, pembengkakan" },
+        { term: "Dislokasi Bahu Anterior", desc: "Caput humeri bisa keluar dari fossa glenoidalis. Gejala: nyeri parah, lengan tergantung, tidak bisa gerak. Terlihat 'lightbulb sign' di X-ray" },
+        { term: "Cedera Saraf Radial", desc: "Patah tulang lengan atas bisa rusak saraf radial. Akibatnya: wrist drop (tangan jatuh), tidak bisa angkat pergelangan tangan, paralisis ekstensor" },
+        { term: "Cedera Saraf Ulnaris", desc: "Kompresi di sulcus nervi ulnaris dari fraktur atau edema. Gejala: kesemutan di jari kelingking & jari manis, kelemahan otot tangan" },
+        { term: "Tennis Elbow & Golfer's Elbow", desc: "Nyeri epicondylus dari pekerjaan berulang atau olahraga. Tennis elbow (epicondylus lateralis), Golfer's elbow (epicondylus medialis)" },
+        { term: "Intraarticular Injection Siku", desc: "Dokter suntik steroid/anestesi ke articulatio cubiti untuk terapi atau imaging. Landmark: palpate distal humerus, inject di anterior fossa" },
+      ]},
+    ],
+    quiz: [
+      { q: "Caput humeri berartikulasi dengan?", options: ["Trochlea ulnae","Fossa glenoidalis scapulae","Capitulum radii","Epicondylus lateralis"], answer: 1 },
+      { q: "Collum chirurgicum penting secara klinis karena?", options: ["Tempat perlekatan deltoideus","Sering terjadi fraktur & risiko saraf-pembuluh rusak","Melewati saraf ulnaris","Menjadi landmark siku"], answer: 1 },
+      { q: "Sulcus intertubercularis terletak antara?", options: ["Caput dan collum anatomicum","Tuberculum majus dan tuberculum minus","Epicondylus medial dan lateral","Capitulum dan trochlea"], answer: 1 },
+      { q: "Tuberculum majus terletak di sisi?", options: ["Medial","Anterior","Lateral","Posterior"], answer: 2 },
+      { q: "Sulcus spiralis (sulcus nervi radialis) terletak di?", options: ["Anterior corpus","Posterior corpus","Medial corpus","Lateral corpus"], answer: 1 },
+      { q: "Trochlea humeri berartikulasi dengan tulang?", options: ["Radius","Ulna","Scapula","Carpalia"], answer: 1 },
+      { q: "Fossa olecrani berfungsi menampung?", options: ["Caput radii","Processus coronoideus","Olecranon ulnae","Epicondylus"], answer: 2 },
+      { q: "Epicondylus lateralis adalah tempat perlekatan otot-otot?", options: ["Flexor pergelangan","Extensor pergelangan","Pronator","Supinator"], answer: 1 },
+    ]
+  },
+  antebrachii: {
+    title: "Regio Antebrachii",
+    intro: "Regio antebrachii (lengan bawah) terdiri dari dua tulang: radius dan ulna yang dihubungkan oleh membrana interossea.",
+    sections: [
+      { heading: "Gambaran Umum Radius & Ulna", text: "Radius terletak di sisi lateral lengan bawah dan berartikulasi dengan humerus, ulna, dan ossa carpalia. Ulna terletak di sisi medial dan membentuk sendi siku (articulatio cubiti) yang kompleks. Keduanya dihubungkan oleh membrana interossea yang memungkinkan pronasi dan supinasi." },
+      
+      { heading: "Radius (Os Radius)", image: "https://i.ibb.co.com/357hTNd1/Picture45555.png", highlights: [
+        { term: "Caput Radii (Capitulum Radii)", desc: "Ujung proksimal radius berbentuk roda, berartikulasi dengan capitulum humeri. Dapat dirasakan berputar di bawah kulit saat pronasi-supinasi" },
+        { term: "Fovea Articularis (Fossa Articularis)", desc: "Cekungan pada ujung cranial caput radii, berhubungan langsung dengan capitulum humeri dalam sendi siku" },
+        { term: "Collum Radii", desc: "Cekungan di inferior caput radii, memisahkan caput dari corpus radii" },
+        { term: "Tuberositas Radii", desc: "Tonjolan halus pada aspek medial di proximal corpus radii, tempat perlekatan tendon m. biceps brachii" },
+      ]},
+      
+      { heading: "Radius Corpus (Diaphysis)", highlights: [
+        { term: "Margo Anterior (Margo Volaris)", desc: "Tepi di aspek ventral corpus radii" },
+        { term: "Margo Posterior", desc: "Tepi di aspek dorsal corpus radii" },
+        { term: "Margo Interossei Radii", desc: "Tepi di aspek medial corpus radii, berhadapan dengan margo interossei ulnae, tempat perlekatan membrana interossea" },
+      ]},
+      
+      { heading: "Radius Distal", highlights: [
+        { term: "Processus Styloideus Radii (Lateralis)", desc: "Pelebaran pada ujung distal radius ke arah lateral, dapat dipalpasi dari luar (landmark klinis)" },
+        { term: "Facies Articularis Carpi", desc: "Permukaan ujung distal radius yang menghadap ke distal, berartikulasi dengan ossa carpalia baris proksimal (scaphoideum, lunatum, triquetrum)" },
+        { term: "Incisura Ulnaris (Sigmoid Notch)", desc: "Cekungan pada aspek medial ujung distal radius, berartikulasi dengan caput ulnae untuk membentuk articulatio radioulnaris distalis" },
+      ]},
+      
+      { heading: "Ulna (Os Ulna)", image: "https://i.ibb.co.com/2Y53wSKy/Picture65555.png", highlights: [
+        { term: "Incisura Semilunaris Ulnae (Incisura Trochlearis)", desc: "Cekungan besar di ujung proksimal ulna yang membuka ke arah ventral, berartikulasi dengan trochlea humeri dalam sendi siku" },
+        { term: "Olecranon (Processus Olecranii)", desc: "Tonjolan besar di proximal ulna ke arah dorsal, membentuk 'titik' siku, berartikulasi dengan fossa olecranii humeri saat ekstensi lengan" },
+        { term: "Processus Coronoideus Ulnae", desc: "Tonjolan di ventral inferior incisura semilunaris, berartikulasi dengan fossa coronoidea humeri saat fleksi lengan" },
+        { term: "Tuberositas Ulnae", desc: "Tonjolan halus di caudal processus coronoideus, tempat perlekatan m. brachialis" },
+        { term: "Incisura Radialis", desc: "Cekungan di bagian lateral incisura semilunaris yang berhadapan dengan caput radii" },
+      ]},
+      
+      { heading: "Ulna Corpus (Diaphysis)", highlights: [
+        { term: "Crista Musculi Supinatoris", desc: "Garis di sebelah caudal incisura radialis untuk perlekatan m. supinator" },
+        { term: "Margo Anterior", desc: "Tepi di aspek ventral corpus ulnae" },
+        { term: "Margo Posterior", desc: "Tepi di aspek dorsal corpus ulnae" },
+        { term: "Margo Interossei Ulnae", desc: "Tepi di aspek lateral corpus ulnae, berhadapan dengan margo interossei radii, tempat perlekatan membrana interossea" },
+      ]},
+      
+      { heading: "Ulna Distal", highlights: [
+        { term: "Caput Ulnae (Capitulum Ulnae)", desc: "Ujung distal ulna berbentuk bulat kecil (circumferentia articularis), dapat dipalpasi pada aspek dorsal pergelangan tangan" },
+        { term: "Processus Styloideus Ulnae (Medialis)", desc: "Tonjolan ke posterior pada ujung distal ulna yang dapat dipalpasi dari luar, terletak di medial caput ulnae" },
+        { term: "Facies Articularis untuk Radius", desc: "Permukaan medial caput ulnae yang berartikulasi dengan incisura ulnaris radii" },
+      ]},
+      
+      { heading: "Membrana Interossea Antebrachii", text: "Jaringan fibrosa yang menghubungkan corpus radius dan ulna sepanjang diaphysis. Memisahkan dua kompartemen otot (flekssor anterior & ekstensor posterior). Memungkinkan transmisi gaya dari radius ke ulna dan sebaliknya, serta memfasilitasi gerakan pronasi dan supinasi." },
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Colles' Fracture", desc: "Fraktur distal radius dari jatuh dengan tangan ekstensi. Gejala: pembengkakan distal lengan, deformitas 'fork tines', nyeri parah. Common pada elderly dengan osteoporosis" },
+        { term: "Smith's Fracture", desc: "Fraktur distal radius dengan displacement ventral (opposite Colles). Dari jatuh dengan tangan fleksi. Lebih jarang tapi lebih serius dari Colles" },
+        { term: "Olecranon Fracture", desc: "Patah di ujung siku dari trauma langsung atau jatuh. Gejala: bengkak besar di siku, nyeri, ketidakmampuan ekstensi. Risk: restricted ROM jika tidak ditangani dengan baik" },
+        { term: "Monteggia Fracture", desc: "Fraktur corpus ulnae + dislokasi caput radii anterior. Dari trauma atau jatuh. Dangerous karena mudah terlewat di X-ray awal" },
+        { term: "Galeazzi Fracture", desc: "Fraktur corpus radii + dislokasi radioulnaris distalis. Serious injury yang butuh operasi untuk hasil optimal" },
+        { term: "Pronation/Supination Loss", desc: "Jika pronasi-supinasi terganggu, indicative dari cedera membrana interossea atau fracture-dislocation radioulnar" },
+        { term: "Posterior Interosseous Nerve (PIN) Injury", desc: "Nerve pass through supinator muscle, bisa injured dari fracture atau swelling. Gejala: wrist drop, loss extensor function" },
+        { term: "Palpasi Landmark Klinis", desc: "Olecranon, processus styloideus radii & ulnae adalah landmark penting untuk physical exam dan procedural guidance (nerve blocks, injections)" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif", models: [
+        { title: "Model 3D Os Radius", link: "https://skfb.ly/69rHP", button: "Buka Model 3D Radius" },
+        { title: "Model 3D Os Ulna", link: "https://skfb.ly/69rHL", button: "Buka Model 3D Ulna" },
+      ]},
+    ],
+    quiz: [
+      { q: "Olecranon membentuk tonjolan di bagian?", options: ["Bahu","Siku","Pergelangan","Jari"], answer: 1 },
+      { q: "Tuberositas radii merupakan tempat perlekatan otot?", options: ["Triceps","Deltoideus","Biceps brachii","Brachioradialis"], answer: 2 },
+      { q: "Incisura trochlearis terdapat pada?", options: ["Radius","Ulna","Humerus","Scapula"], answer: 1 },
+      { q: "Gerakan pronasi dan supinasi dimungkinkan oleh?", options: ["Sendi bahu","Membrana interossea","Ligamen cruciatum","Discus articularis"], answer: 1 },
+      { q: "Radius terletak di sisi?", options: ["Medial","Lateral","Posterior","Superior"], answer: 1 },
+      { q: "Processus coronoideus berartikulasi dengan?", options: ["Capitulum humeri","Fossa olecrani","Fossa coronoidea humeri","Trochlea humeri"], answer: 2 },
+      { q: "Caput radii dapat berputar pada saat?", options: ["Fleksi-ekstensi saja","Pronasi-supinasi","Adduksi-abduksi","Translasi"], answer: 1 },
+      { q: "Fossa articularis pada caput radii berhubungan dengan?", options: ["Trochlea","Capitulum humeri","Processus coronoideus","Incisura semilunaris"], answer: 1 },
+    ]
+  },
+  manus: {
+    title: "Regio Manus",
+    intro: "Regio manus (tangan) terdiri dari 26 tulang yang tersusun atas 3 kelompok utama: Ossa Carpalia (8 tulang), Ossa Metacarpalia (5 tulang), dan Ossa Phalanges (14 tulang). Struktur kompleks ini memungkinkan fungsi presisi dan gerakan halus tangan.",
+    sections: [
+      { heading: "Gambaran Umum Regio Manus", image: "https://i.ibb.co.com/ZR7HswsF/manus-umum.png", text: "Regio manus terdiri dari tiga kelompok tulang utama yang bekerja bersama untuk menghasilkan gerakan presisi. Setiap kelompok memiliki fungsi spesifik dalam pergerakan dan penopang tangan." },
+      
+      { heading: "Ossa Carpalia (Tarsus Tangan) – 8 Tulang", image: "https://i.ibb.co.com/q3yHTkxM/manus-distal-dan-proximal.png", highlights: [
+        { term: "Baris Proksimal (4 tulang)", desc: "Scaphoideum, Lunatum, Triquetrum, Pisiforme" },
+        { term: "Baris Distal (4 tulang)", desc: "Trapezium, Trapezoideum, Capitatum, Hamatum" },
+      ]},
+      
+      { heading: "Ossa Carpalia Baris Proksimal", highlights: [
+        { term: "Os Scaphoideum (Os Naviculare Manus)", desc: "Terletak pada bagian paling lateral baris proksimal. Sering mengalami fraktur dari jatuh dengan tangan ekstensi (fall on outstretched hand / FOOSH)" },
+        { term: "Os Lunatum", desc: "Terletak tepat di medial os scaphoideum. Bentuknya seperti bulan sabit (luna = bulan). Berartikulasi superior dengan radius" },
+        { term: "Os Triquetrum", desc: "Terletak tepat di antara os scaphoideum (di lateralnya) dan os pisiforme (di medialnya). Berbentuk segitiga dengan tiga sisi" },
+        { term: "Os Pisiforme", desc: "Terletak pada bagian paling medial baris proksimal. Tulang sesamoid yang tertanam dalam tendon m. flexor carpi ulnaris, dapat dipalpasi dari luar" },
+      ]},
+      
+      { heading: "Ossa Carpalia Baris Distal", highlights: [
+        { term: "Os Trapezium (Os Multangulum Majus)", desc: "Terletak pada bagian paling lateral baris distal. Berartikulasi dengan os metacarpal 1 (ibu jari), memungkinkan opposition gerakan ibu jari" },
+        { term: "Os Trapezoideum (Os Multangulum Minus)", desc: "Terletak tepat di medial os trapezium. Berartikulasi dengan os metacarpal 2. Bentuk seperti trapez (trapezoid)" },
+        { term: "Os Capitatum", desc: "Terletak tepat di antara os trapezoideum (di lateralnya) dan os hamatum (di medialnya). Tulang carpal terbesar. Berartikulasi dengan os metacarpal 3" },
+        { term: "Os Hamatum", desc: "Terletak pada bagian paling medial baris distal. Memiliki processus uncinatus (tonjolan berbentuk kait). Berartikulasi dengan os metacarpal 4 dan 5" },
+      ]},
+      
+      { heading: "Ossa Metacarpalia (Tulang Telapak Tangan) – 5 Tulang", image: "https://i.ibb.co.com/zhbx27Mb/metacarpalia.png", highlights: [
+        { term: "Os Metacarpal I", desc: "Lateral, di proksimal berartikulasi dengan os trapezium, di distal berartikulasi dengan phalanx 1 (pollex/ibu jari). Paling pendek dan paling mobile" },
+        { term: "Os Metacarpal II", desc: "Medial-lateral, di proksimal berartikulasi dengan os trapezoideum, di distal berartikulasi dengan phalanx 2 (index finger/jari telunjuk)" },
+        { term: "Os Metacarpal III", desc: "Central, di proksimal berartikulasi dengan os capitatum, di distal berartikulasi dengan phalanx 3 (middle finger/jari tengah)" },
+        { term: "Os Metacarpal IV", desc: "Medial-central, di proksimal berartikulasi dengan os hamatum, di distal berartikulasi dengan phalanx 4 (ring finger/jari manis)" },
+        { term: "Os Metacarpal V", desc: "Medial, di proksimal berartikulasi dengan os hamatum, di distal berartikulasi dengan phalanx 5 (little finger/jari kelingking). Memiliki tuberositas metacarpi V yang dapat dipalpasi" },
+      ]},
+      
+      { heading: "Struktur Setiap Os Metacarpale", highlights: [
+        { term: "Basis Metacarpi", desc: "Ujung proksimal untuk berartikulasi dengan tulang carpal" },
+        { term: "Corpus Metacarpi", desc: "Badan tulang metacarpal, panjang dan ramping" },
+        { term: "Caput Metacarpi", desc: "Ujung distal membentuk kepala untuk berartikulasi dengan phalanx" },
+      ]},
+      
+      { heading: "Ossa Phalanges (Tulang Jari) – 14 Tulang", image: "https://i.ibb.co.com/twK2FXqz/phalanxx.png", highlights: [
+        { term: "Phalanx 1 (Pollex/Ibu Jari)", desc: "Memiliki 2 ruas: phalanx proximalis dan phalanx distalis. Paling besar dan kokoh dibanding phalanx lainnya" },
+        { term: "Phalanx II (Jari Telunjuk)", desc: "Memiliki 3 ruas: phalanx proximalis, phalanx media, dan phalanx distalis. Phalanx ini paling panjang" },
+        { term: "Phalanx III (Jari Tengah)", desc: "Memiliki 3 ruas: phalanx proximalis, phalanx media, dan phalanx distalis. Panjangnya medium" },
+        { term: "Phalanx IV (Jari Manis)", desc: "Memiliki 3 ruas: phalanx proximalis, phalanx media, dan phalanx distalis. Sedikit lebih pendek dari phalanx III" },
+        { term: "Phalanx V (Jari Kelingking)", desc: "Memiliki 3 ruas: phalanx proximalis, phalanx media, dan phalanx distalis. Paling pendek dari semua phalanx" },
+      ]},
+      
+      { heading: "Struktur Setiap Phalanx", highlights: [
+        { term: "Basis Phalangis", desc: "Ujung proksimal untuk berartikulasi dengan tulang sebelumnya (metacarpal atau phalanx proksimal)" },
+        { term: "Corpus Phalangis", desc: "Badan phalanx, ramping dan panjang" },
+        { term: "Caput Phalangis", desc: "Ujung distal membentuk kepala untuk berartikulasi dengan phalanx berikutnya atau sebagai ujung jari" },
+      ]},
+      
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Scaphoid Fracture", desc: "Fraktur scaphoideum dari FOOSH (jatuh dengan tangan ekstensi). Risiko: avascular necrosis karena vaskularisasi berputar dari distal ke proksimal. Diagnosis: X-ray, MRI" },
+        { term: "Boxer's Fracture", desc: "Fraktur metacarpal V dari pukulan. Gejala: bengkak, memar, deformitas. Terapi: splinting atau operasi tergantung displacement" },
+        { term: "Carpal Tunnel Syndrome", desc: "Kompresi nervus medianus di terowongan carpal dari repetitive strain atau tebal synovial sheath. Gejala: kesemutan lateral 3.5 jari, terutama malam, kelemahan grip" },
+        { term: "Finger Fractures", desc: "Patah jari dari trauma langsung atau terpukul. Diagnosis: X-ray (PA, lateral, oblique views). Terapi: splinting, buddy taping, atau operasi untuk intra-articular fractures" },
+        { term: "Mallet Finger", desc: "Avulsi dari phalanx distalis oleh extensor tendon. Gejala: jari tidak bisa ekstensi di DIP joint, deformitas hammer-like. Terapi: splinting 6-12 minggu" },
+        { term: "Ganglion Cyst", desc: "Kista benign pada pergelangan tangan/dorsum manus. Gejala: benjol, terkadang nyeri, bisa interferensi fungsi. Terapi: observasi, aspirasi, atau eksisi" },
+        { term: "Dupuytren's Contracture", desc: "Kontraktur palmar fascia, sering di metacarpal IV-V. Gejala: flexion contracture jari, restriction grip, palpable cord di palm" },
+      ]},
+      
+      { heading: "📦 Model 3D Interaktif Manus", models: [
+        { title: "Model 3D Os Manus (Hand Bones)", link: "https://skfb.ly/6RsIX", button: "Buka Model 3D Tangan Lengkap" },
+      ]},
+    ],
+    quiz: [
+      { q: "Berapa jumlah tulang carpal pada satu tangan?", options: ["6","8","10","12"], answer: 1 },
+      { q: "Berapa total phalanges di satu tangan?", options: ["10","12","14","16"], answer: 2 },
+      { q: "Pollex (ibu jari) memiliki berapa phalanges?", options: ["2","3","4","1"], answer: 0 },
+      { q: "Tulang carpal baris distal TIDAK termasuk?", options: ["Trapezium","Capitatum","Lunatum","Hamatum"], answer: 2 },
+      { q: "Os trapezium berartikulasi dengan os metacarpal?", options: ["1","2","3","4"], answer: 0 },
+      { q: "Os pisiforme adalah tulang sesamoid tertanam dalam tendon?", options: ["Flexor digitorum","Flexor carpi ulnaris","Extensor digitorum","Flexor carpi radialis"], answer: 1 },
+      { q: "Os hamatum memiliki processus yang disebut?", options: ["Styloideus","Uncinatus","Coronoideus","Olecranon"], answer: 1 },
+      { q: "Jari kelingking (digiti minimi) adalah phalanx nomor?", options: ["III","IV","V","II"], answer: 2 },
+    ]
+  },
+  cingulum_inferior: {
+    title: "Cingulum Membri Inferioris",
+    intro: "Gelang panggul (pelvis) menghubungkan extremitas inferior ke skeleton axial, terdiri dari os coxae, os sacrum, dan os coccygis.",
+    sections: [
+      { heading: "Gambaran Umum Os Coxae", image: "https://i.ibb.co.com/27B7QS5n/caxae-umum.png", text: "Setiap os coxae terbentuk dari penyatuan 3 tulang: Os Ilium (superior), Os Ischium (posteroinferior), Os Pubis (anteroinferior). Ketiga tulang tersebut bertemu pada acetabulum sekitar usia 16 tahun." },
+      { heading: "Struktur Pelvis", highlights: [
+        { term: "Os Coxae Dexter & Sinister", desc: "Anterior → Symphysis pubis; Dorsal → Berartikulasi dengan os sacrum" },
+        { term: "Cavum Pelvicum", desc: "Rongga yang dibentuk oleh: os coxae dexter & sinister + os sacrum + os coccygis" },
+      ]},
+      { heading: "Os Ilium (Iliaca)", image: "https://i.ibb.co.com/CK4htqvf/iliaca.png", highlights: [
+        { term: "Crista Iliaca", desc: "Bagian tertinggi os coxae, dapat dipalpasi dari luar" },
+        { term: "Spina Iliaca Anterior Superior (SIAS)", desc: "Tonjolan akhir crista iliaca ke arah anterior, landmark klinis penting" },
+        { term: "Spina Iliaca Anterior Inferior", desc: "Tonjolan anterior di inferior SIAS" },
+        { term: "Spina Iliaca Posterior Superior (PSIS)", desc: "Tonjolan akhir crista iliaca ke arah posterior" },
+        { term: "Spina Iliaca Posterior Inferior", desc: "Tonjolan posterior di inferior PSIS" },
+      ]},
+      { heading: "Acetabulum", image: "https://i.ibb.co.com/hh3zdnx/coxae-2.png", highlights: [
+        { term: "Acetabulum", desc: "Cekungan berbentuk cangkir di lateral os coxae, berartikulasi dengan caput femoris" },
+        { term: "Limbus Acetabuli", desc: "Titik tertinggi acetabulum" },
+        { term: "Fossa Acetabuli", desc: "Lantai acetabulum, tempat perlekatan ligamentum teres capitis (lig. capitis femoris)" },
+        { term: "Facies Lunata Acetabuli", desc: "Permukaan cartilago acetabulum berbentuk telapak kuda" },
+      ]},
+      { heading: "Os Ischium", image: "https://i.ibb.co.com/QvrsSRPm/coxae-3.png", highlights: [
+        { term: "Tuber Ischiadicum", desc: "Bagian yang menampung berat badan saat duduk, tempat perlekatan otot-otot hamstring" },
+        { term: "Incisura Ischiadica Major", desc: "Cekungan di inferior spina iliaca posterior inferior" },
+        { term: "Spina Ischiadica", desc: "Tonjolan di inferior incisura ischiadica major" },
+        { term: "Incisura Ischiadica Minor", desc: "Cekungan di inferior spina ischiadica" },
+      ]},
+      { heading: "Os Pubis & Struktur Lainnya", image: "https://i.ibb.co.com/Dm3NCcX/coxae-4.png", highlights: [
+        { term: "Foramen Obturatorium", desc: "Lubang besar di inferior os coxae" },
+        { term: "Tuberculum Pubicum", desc: "Tonjolan pada sisi lateral symphysis osseum pubis, tempat perlekatan ligamentum inguinale" },
+        { term: "Facies Auricularis Coxae", desc: "Permukaan medial coxae yang berartikulasi dengan os sacrum" },
+      ]},
+      { heading: "Apertura Pelvis", image: "https://i.ibb.co.com/8CcN1qY/cavitas-pelvis.png", highlights: [
+        { term: "Apertura Pelvis Superior", desc: "Batas: promontorium (posterior) | linea arcuata (lateral) | crista pubica (anterior)" },
+        { term: "Apertura Pelvis Inferior", desc: "Batas: ujung os coccygeus (posterior) | tuber ischiadicum (lateral) | arcus pubis (anterior)" },
+      ]},
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Panggul", desc: "Jatuh dari ketinggian atau kecelakaan berat bisa patahkan panggul. Berisiko pendarahan dalam, sangat serius" },
+        { term: "Terkilir Pinggul", desc: "Kecelakaan bisa buat sendi panggul lepas dari tempatnya. Gejala: sakit parah, kaki dalam posisi aneh" },
+        { term: "Patah Leher Paha", desc: "Lansia sering patah leher paha dari jatuh kecil. Gejala: kaki pendek, putar keluar, tidak bisa jalan" },
+        { term: "Palpasi Landmark", desc: "SIAS, PSIS, tuber ischiadicum, dan crista iliaca adalah landmark penting untuk pemeriksaan klinis" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Cingulum Inferior", models: [
+        { title: "Model 3D Os Coxae (Pelvis)", link: "https://skfb.ly/pxFWD", button: "Buka Model Pelvis 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Os coxae terbentuk dari penyatuan berapa tulang?", options: ["2","3","4","5"], answer: 1 },
+      { q: "Ketiga tulang os coxae bertemu pada?", options: ["Foramen obturatum","Acetabulum","Symphysis pubis","Crista iliaca"], answer: 1 },
+      { q: "SIAS adalah singkatan dari?", options: ["Spina Iliaca Anterior Sinistra","Spina Iliaca Anterior Superior","Spina Ischiadica Anterior Superior","Sulcus Iliaca Anterior"], answer: 1 },
+      { q: "Saat duduk, berat tubuh ditopang oleh?", options: ["Crista iliaca","Tuber ischiadicum","Symphysis pubica","Acetabulum"], answer: 1 },
+      { q: "Foramen obturatum terletak di mana?", options: ["Superior os coxae","Lateral os coxae","Inferior os coxae","Medial os coxae"], answer: 2 },
+      { q: "Facies auricularis coxae berartikulasi dengan?", options: ["Femur","Os sacrum","Os ischium","Os pubis"], answer: 1 },
+      { q: "Limbus acetabuli adalah?", options: ["Lantai acetabulum","Titik tertinggi acetabulum","Lubang pada acetabulum","Cartilago acetabulum"], answer: 1 },
+      { q: "Arcus pubis terletak di bagian?", options: ["Superior","Posterior","Anterior & Inferior","Lateral"], answer: 2 },
+    ]
+  },
+  femoris: {
+    title: "Regio Femoris",
+    intro: "Regio femoris dibentuk oleh femur, tulang terpanjang dan terkuat di tubuh manusia.",
+    sections: [
+      { heading: "Gambaran Umum Femur", text: "Tulang paling panjang & paling berat di tubuh manusia. Pada posisi berdiri, os femur meneruskan gaya berat badan dan pelvis menuju ke os tibia. Femur terdiri dari ujung proximal, corpus (diaphysis femoris), dan ujung distal.", image: "https://i.ibb.co.com/MDbHZmZg/Picture1.png" },
+      { heading: "Femur Proksimal", text: "Bagian atas femur dengan struktur penting untuk sendi pinggul dan perlekatan otot.", image: "https://i.ibb.co.com/d0sygyWB/Picture2.png", highlights: [
+        { term: "Caput Femoris", desc: "Tonjolan bulat pada ujung proximal, mengarah ke superomedial, berartikulasi dengan acetabulum os coxae" },
+        { term: "Fovea Capitis Femoris", desc: "Cekungan di pertengahan caput femoris untuk perlekatan ligamentum teres capitis" },
+        { term: "Collum Femoris", desc: "Leher femur memisahkan caput dengan corpus, sering fraktur pada lansia" },
+        { term: "Trochanter Major", desc: "Tonjolan ke arah lateral di inferior collum, dapat dipalpasi dari luar" },
+        { term: "Trochanter Minor", desc: "Tonjolan ke arah medial di inferior collum" },
+      ]},
+      { heading: "Femur Medial", image: "https://i.ibb.co.com/9997MDqc/Cuplikan-layar-. .png", highlights: [
+        { term: "Corpus Femoris", desc: "Badan/poros tulang femur" },
+        { term: "Linea Aspera", desc: "Garis vertikal di posterior corpus femoris tempat perlekatan otot" },
+        { term: "Planum Popliteum", desc: "Cekungan datar berbentuk segitiga di inferior linea aspera (fossa poplitea)" },
+      ]},
+      { heading: "Femur Distal", image: "https://i.ibb.co.com/hJrNcg1D/Cuplikan-layar-. .png", highlights: [
+        { term: "Condylus Lateralis Femoris", desc: "Tonjolan bulat di laterodistal, berartikulasi dengan condyles lateralis tibialis" },
+        { term: "Condylus Medialis Femoris", desc: "Tonjolan di mediadistal, berartikulasi dengan condylus medialis tibialis" },
+        { term: "Fossa Intercondylaris", desc: "Cekungan antara kedua condylus, tempat perlekatan ligamentum cruciatum" },
+        { term: "Facies Patellaris", desc: "Bagian anterodistal yang ditempati oleh os patella" },
+        { term: "Epicondylus Lateralis", desc: "Tonjolan bulat di lateral condylus lateralis, dapat dipalpasi" },
+        { term: "Epicondylus Medialis", desc: "Tonjolan bulat di lateral condylus medialis, dapat dipalpasi" },
+      ]},
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Tulang Paha", desc: "Jatuh atau kecelakaan bisa patahkan tulang paha. Tanda: bengkak besar, memar, sakit parah" },
+        { term: "Perdarahan Dalam", desc: "Patah paha bisa sebabkan pendarahan dalam yang banyak. Perlu penanganan cepat untuk hindari bahaya" },
+        { term: "Posisi Paha Abnormal", desc: "Dalam posisi duduk, paha seharusnya normal. Jika ada kelainan (dalam atau luar), bisa sebabkan masalah lutut kronis" },
+        { term: "Nyeri Paha Saat Jalan", desc: "Beberapa orang nyeri paha karena posisi tulang atau otot yang kencang. Perlu pemeriksaan dokter" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Femur", models: [
+        { title: "Model 3D Os Femur", link: "https://skfb.ly/6ursH", button: "Buka Model Os Femur 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Femur adalah tulang terpanjang di?", options: ["Lengan","Tungkai","Dada","Punggung"], answer: 1 },
+      { q: "Collum femoris sering fraktur pada?", options: ["Anak-anak","Remaja","Lansia","Bayi"], answer: 2 },
+      { q: "Caput femoris berartikulasi dengan?", options: ["Cavitas glenoidalis","Acetabulum","Trochlea","Incisura"], answer: 1 },
+      { q: "Linea aspera terdapat di sisi?", options: ["Anterior","Lateral","Posterior","Medial"], answer: 2 },
+      { q: "Trochanter major terletak di sisi?", options: ["Medial","Lateral","Anterior","Posterior"], answer: 1 },
+    ]
+  },
+  genus: {
+    title: "Regio Genus",
+    intro: "Regio genus (lutut) melibatkan patella dan permukaan sendi distal femur serta proksimal tibia.",
+    sections: [
+      { heading: "Patella", text: "Patella adalah tulang sesamoid terbesar di tubuh, tertanam dalam tendon m. quadriceps femoris. Berfungsi meningkatkan efisiensi ekstensi lutut. Os sesamoidea ini berbentuk segitiga dengan basis patellae di superior dan apex patellae di inferior.", image: "https://i.ibb.co.com/hJWY8njv/Cuplikan-layar-. .png" },
+      { heading: "Sendi Lutut (Articulatio Genus)", highlights: [
+        { term: "Meniscus Medialis & Lateralis", desc: "Bantalan fibrokartilago di antara femur dan tibia" },
+        { term: "Ligamentum Cruciatum Anterius", desc: "Mencegah translasi anterior tibia" },
+        { term: "Ligamentum Cruciatum Posterius", desc: "Mencegah translasi posterior tibia" },
+        { term: "Ligamentum Collaterale Mediale", desc: "Stabilisasi sisi medial" },
+        { term: "Ligamentum Collaterale Laterale", desc: "Stabilisasi sisi lateral" },
+      ]},
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Cedera Ligamen ACL", desc: "Sendi lutut bisa cedera saat olahraga atau jatuh. Gejala: terasa 'pop', lutut bengkak, tidak stabil" },
+        { term: "Cederanya Meniskus", desc: "Bantalan sendi lutut bisa robek dari gerakan berputar. Tanda: lutut ngunci, nyeri, kesulitan jalan" },
+        { term: "Dislokasi Tempurung", desc: "Tulang kecil di depan lutut bisa bergeser keluar. Penyebab: trauma atau kelainan bawaan. Sangat sakit saat terjadi" },
+        { term: "Cairan di Lutut", desc: "Lutut bisa membengkak karena ada cairan di dalamnya. Dokter bisa tusuk untuk ambil cairan ini untuk diperiksa" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Genus", models: [
+        { title: "Model 3D Sendi Lutut", link: "https://skfb.ly/6AJ6x", button: "Buka Model Lutut 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Patella termasuk jenis tulang?", options: ["Panjang","Pendek","Pipih","Sesamoid"], answer: 3 },
+      { q: "Ligamentum cruciatum anterius mencegah?", options: ["Translasi posterior","Translasi anterior tibia","Rotasi","Abduksi"], answer: 1 },
+      { q: "Meniscus berfungsi sebagai?", options: ["Penggerak sendi","Bantalan sendi","Penghubung otot","Penghasil cairan sendi"], answer: 1 },
+      { q: "Patella tertanam dalam tendon otot?", options: ["Hamstring","Gastrocnemius","Quadriceps femoris","Sartorius"], answer: 2 },
+      { q: "Berapa ligamentum cruciatum pada sendi lutut?", options: ["1","2","3","4"], answer: 1 },
+    ]
+  },
+  cruris: {
+    title: "Regio Cruris",
+    intro: "Regio cruris (tungkai bawah) terdiri dari tibia dan fibula yang meneruskan gaya berat badan ke pedis.",
+    sections: [
+      { heading: "Gambaran Umum Cruris", text: "Regio cruris terdiri dari dua tulang panjang: tibia (medial) dan fibula (lateral). Tibia meneruskan gaya berat badan saat berdiri, sedangkan fibula memberikan stabilitas dan attachment otot. Keduanya dihubungkan oleh membrana interossea." },
+      { heading: "Tibia (Os Tibia)", image: "https://i.ibb.co.com/S7cH8Lhj/Cuplikan-layar-. .png", highlights: [
+        { term: "Os Longum Medial-Anterior", desc: "Terletak di sisi medial dan anterior regio cruris, meneruskan gaya berat badan saat berdiri" },
+        { term: "Tiga Bagian Utama", desc: "Ujung proximal, corpus (diaphysis tibiae), dan ujung distal" },
+      ]},
+      { heading: "Tibia Proksimal", image: "https://i.ibb.co.com/XZQJhcL9/prixima-tibia.png", highlights: [
+        { term: "Condylus Lateralis Tibialis", desc: "Tonjolan bulat di lateroproximal, berartikulasi dengan condylus lateralis femoris, dapat dipalpasi dari luar" },
+        { term: "Condylus Medialis Tibialis", desc: "Tonjolan bulat di medioproximal, berartikulasi dengan condylus medialis femoris, dapat dipalpasi dari luar" },
+        { term: "Eminentia Intercondylaris", desc: "Peninggian di tengah antara kedua condylus" },
+        { term: "Collum Tibiae", desc: "Cekungan di inferior condylus tibiae" },
+        { term: "Tuberositas Tibiae", desc: "Tonjolan halus di anterior, tempat perlekatan ligamentum patellae" },
+      ]},
+      { heading: "Tibia Corpus & Distal", image: "https://i.ibb.co.com/hF4rFBSH/distal-tibia.png", highlights: [
+        { term: "Margo Anterior", desc: "Tepi di ventral/anterior corpus tibiae" },
+        { term: "Margo Posterior", desc: "Tepi di dorsal/posterior corpus tibiae" },
+        { term: "Margo Interossei Tibialis", desc: "Tepi di lateral, berhadapan dengan margo interossei fibularis" },
+        { term: "Malleolus Medialis (Tibialis)", desc: "Pelebaran di ujung distal ke medial, dapat dipalpasi dari luar" },
+        { term: "Facies Articularis Inferior", desc: "Permukaan ujung distal, berartikulasi dengan os talus" },
+      ]},
+      { heading: "Fibula (Os Fibula)", image: "https://i.ibb.co.com/qYJFHGQ0/fibula.png", highlights: [
+        { term: "Os Panjang Lateral", desc: "Terletak di bagian lateral regio cruris, sejajar dengan tibia, tidak menampung gaya berat badan" },
+        { term: "Tiga Bagian Utama", desc: "Ujung proksimal (membentuk sendi dengan tibia), corpus (difiksasi membrana interossea), ujung distal (persendian dengan talus)" },
+      ]},
+      { heading: "Fibula Proksimal", image: "https://i.ibb.co.com/0RDRcF7m/fibula-prosimal.png", highlights: [
+        { term: "Capitulum Fibulae (Caput Fibulae)", desc: "Ujung proksimal fibula" },
+        { term: "Facies Articularis Capitis Fibulae", desc: "Di bagian medial capitulum, berartikulasi dengan condylus lateralis tibiae" },
+        { term: "Apex Capitis Fibulae (Processus Styloideus)", desc: "Tonjolan dari facies latero-posterior, menjulang ke cranial" },
+        { term: "Collum Fibulae", desc: "Cekungan di inferior capitulum, dilalui nervus fibularis communis - penting untuk clinical examination" },
+        { term: "Facies Lateralis", desc: "Permukaan kasar, tempat perlekatan m. biceps femoris dan ligamentum collaterale" },
+      ]},
+      { heading: "Fibula Corpus & Distal", image: "https://i.ibb.co.com/kVqSpn88/fibula-distallll.png", highlights: [
+        { term: "Margo Anterior", desc: "Tepi di ventral/anterior corpus fibulae" },
+        { term: "Margo Posterior", desc: "Tepi di dorsal/posterior corpus fibulae" },
+        { term: "Margo Interossei Fibularis", desc: "Tepi di medial, berhadapan dengan margo interossei tibiae" },
+        { term: "Malleolus Fibularis (Lateralis)", desc: "Pelebaran di ujung distal ke lateral, dapat dipalpasi dari luar" },
+        { term: "Facies Articularis Malleoli Fibularis", desc: "Permukaan ujung distal, berartikulasi dengan distal tibia dan os talus" },
+      ]},
+      { heading: "Membrana Interossea Cruris", text: "Jaringan fibrosa yang menghubungkan tibia dan fibula sepanjang diaphysis, mirip dengan membrana interossea antebrachii. Memungkinkan stabilitas struktur dan passage pembuluh darah serta saraf." },
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Patah Tibia atau Fibula", desc: "Jatuh atau kecelakaan bisa patahkan tulang tungkai bawah. Tanda: pembengkakan, sulit gerak, nyeri" },
+        { term: "Kompresi Otot", desc: "Setelah patah tulang, otot-otot di tungkai bawah bisa terjepit dan membengkak. Ini bahaya, perlu operasi cepat" },
+        { term: "Cedera Saraf", desc: "Patah tulang bisa rusak saraf di tungkai bawah. Akibatnya: jatuh kaki (tidak bisa angkat kaki), kesemutan" },
+        { term: "Pemeriksaan Tungkai", desc: "Dokter periksa posisi fibula dan tibia untuk pastikan tidak ada cedera tersembunyi" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Cruris", models: [
+        { title: "Model 3D Os Tibia", link: "https://skfb.ly/6ursI", button: "Buka Model Tibia 3D" },
+        { title: "Model 3D Os Fibula", link: "https://skfb.ly/6ursG", button: "Buka Model Fibula 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Malleolus medialis merupakan bagian dari?", options: ["Fibula","Tibia","Femur","Talus"], answer: 1 },
+      { q: "Tuberositas tibiae adalah tempat perlekatan?", options: ["Tendon achilles","Ligamentum patellae","M. gastrocnemius","Ligamentum cruciatum"], answer: 1 },
+      { q: "Malleolus lateralis merupakan bagian dari?", options: ["Tibia","Fibula","Femur","Calcaneus"], answer: 1 },
+      { q: "Tibia terletak di sisi?", options: ["Lateral","Posterior","Medial","Anterior"], answer: 2 },
+      { q: "Caput fibulae terletak di?", options: ["Proksimal","Distal","Tengah","Anterior"], answer: 0 },
+      { q: "Membrana interossea menghubungkan?", options: ["Femur dan tibia","Tibia dan fibula","Radius dan ulna","Humerus dan radius"], answer: 1 },
+      { q: "Nervus fibularis communis melalui area?", options: ["Tuberositas tibiae","Collum fibulae","Malleolus medialis","Eminentia intercondylaris"], answer: 1 },
+    ]
+  },
+  pedis: {
+    title: "Regio Pedis",
+    intro: "Regio pedis (kaki) terdiri dari 26 tulang yang tersusun atas 3 kelompok utama: Ossa Tarsalia, Ossa Metatarsalia, dan Ossa Digitorum (Phalanges).",
+    sections: [
+      { heading: "Gambaran Umum Regio Pedis", image: "https://i.ibb.co.com/ycFtNLxr/2222.png", text: "Regio pedis merupakan dasar penyangga tubuh saat berdiri dan berjalan. Terdiri dari 3 kelompok tulang: Tarsus (7 tulang), Metatarsus (5 tulang), dan Phalanges (14 tulang)." },
+      { heading: "Ossa Tarsalia (Tarsus) – 7 Tulang", image: "https://i.ibb.co.com/F4764dKB/tarsus.png", highlights: [
+        { term: "Os Talus", desc: "Terletak di bagian posterosuperior pedis, berartikulasi dengan tibia & fibula di superior, calcaneus di inferior, naviculare pedis di anterior" },
+        { term: "Os Calcaneus", desc: "Tulang tumit terbesar di kaki, terletak posteroinferior, berartikulasi dengan talus di superior dan cuboideum di anterior" },
+        { term: "Os Naviculare Pedis", desc: "Terletak di anterior talus, berartikulasi dengan talus di posterior, ketiga cuneiforma di anterior, cuboideum di anterolateral" },
+        { term: "Os Cuboideum", desc: "Terletak anterolateral pedis, berartikulasi dengan cuneiforme laterale di medial, naviculare pedis di posterolateral, calcaneus di posterior" },
+        { term: "Os Cuneiforme Mediale", desc: "Paling medial di anterior naviculare, berartikulasi dengan naviculare di posterior, metatarsal 1 di anterior" },
+        { term: "Os Cuneiforme Intermedium", desc: "Intermedia di anterior naviculare, berartikulasi dengan naviculare di posterior, metatarsal 2 di anterior" },
+        { term: "Os Cuneiforme Laterale", desc: "Paling lateral di anterior naviculare, berartikulasi dengan naviculare di posterior, cuboideum di lateral, metatarsal 3 di anterior" },
+      ]},
+      { heading: "Ossa Metatarsalia – 5 Tulang", image: "https://i.ibb.co.com/QFhDSXhg/Picture3.png", highlights: [
+        { term: "Os Metatarsale I", desc: "Medial, berartikulasi dengan cuneiforme mediale di proksimal, phalanx 1 (hallux) di distal" },
+        { term: "Os Metatarsale II", desc: "Medial-central, berartikulasi dengan cuneiforme intermedium di proksimal, phalanx 2 di distal" },
+        { term: "Os Metatarsale III", desc: "Central, berartikulasi dengan cuneiforme laterale di proksimal, phalanx 3 di distal" },
+        { term: "Os Metatarsale IV", desc: "Lateral-central, berartikulasi dengan cuboideum di proksimal, phalanx 4 di distal" },
+        { term: "Os Metatarsale V", desc: "Lateral, berartikulasi dengan cuboideum di proksimal, phalanx 5 di distal" },
+      ]},
+      { heading: "Ossa Digitorum / Phalanges – 14 Tulang", image: "https://i.ibb.co.com/N29SpL5v/Picture5.png", highlights: [
+        { term: "Phalanx Hallucis (Jari 1)", desc: "2 ruas: phalanx proximalis dan phalanx distalis. Paling besar dan kokoh" },
+        { term: "Phalanx II, III, IV, V", desc: "Masing-masing 3 ruas: phalanx proximalis, phalanx media, phalanx distalis" },
+        { term: "Struktur Setiap Phalanx", desc: "Basis phalangis (proksimal), corpus phalangis (tengah), caput phalangis (distal)" },
+      ]},
+      { heading: "🏥 Catatan Klinis", highlights: [
+        { term: "Ankle Sprain", desc: "Terkilir pergelangan kaki dari jatuh atau misstep. Ligamen lateral sering rusak. Gejala: bengkak, memar, nyeri, kesulitan jalan" },
+        { term: "Plantar Fasciitis", desc: "Peradangan ligamen telapak kaki dari overuse. Gejala: nyeri tajam tumit terutama pagi hari atau setelah istirahat lama" },
+        { term: "Achilles Tendonitis", desc: "Peradangan tendon Achilles di belakang tumit dari olahraga berlebihan. Risiko rupture tendon yang serius dan memerlukan operasi" },
+        { term: "Calcaneus Fracture", desc: "Patah tulang tumit dari jatuh tinggi atau trauma. Risiko kehilangan lengkung kaki dan nyeri kronis jangka panjang" },
+      ]},
+      { heading: "📦 Model 3D Interaktif Pedis", models: [
+        { title: "Model 3D Tulang Kaki", link: "https://skfb.ly/6RZDp", button: "Buka Model Pedis 3D" },
+      ]},
+    ],
+    quiz: [
+      { q: "Berapa total jumlah tulang di satu kaki?", options: ["16","20","26","30"], answer: 2 },
+      { q: "Berapa jumlah tulang tarsalia?", options: ["5","7","8","10"], answer: 1 },
+      { q: "Ibu jari kaki (hallux) memiliki berapa phalanges?", options: ["1","2","3","4"], answer: 1 },
+      { q: "Os talus berartikulasi dengan tulang apa di superior?", options: ["Calcaneus","Naviculare","Tibia & Fibula","Metatarsal"], answer: 2 },
+      { q: "Calcaneus adalah tulang di bagian?", options: ["Dorsal","Medial","Tumit","Lateral"], answer: 2 },
+    ]
+  },
+};
+
+// Sidebar structure
+const SIDEBAR = [
+  { id: 'terminologi', label: 'Terminologi Anatomi', icon: 'book-open', nav: 'terminologi', parent: null },
+  { id: 'axial', label: 'Skeleton Axial', icon: 'layers', nav: 'axial', parent: null, children: [
+    { id: 'cranium', label: 'Regio Cranium', parent: 'axial' },
+    { id: 'vertebralis', label: 'Regio Vertebralis', parent: 'axial' },
+    { id: 'costae', label: 'Regio Costae', parent: 'axial' },
+    { id: 'sternum', label: 'Regio Sternum', parent: 'axial' },
+  ]},
+  { id: 'appendicular', label: 'Skeleton Appendiculare', icon: 'git-branch', nav: 'appendicular', parent: null, children: [
+    { id: '_label_cs', label: '── Cingulum Superior', isLabel: true },
+    { id: 'cingulum_superior', label: 'Cingulum Membri Superioris', parent: 'appendicular' },
+    { id: '_label_es', label: '── Extremitas Superior', isLabel: true },
+    { id: 'brachii', label: 'Regio Brachii', parent: 'appendicular' },
+    { id: 'antebrachii', label: 'Regio Antebrachii', parent: 'appendicular' },
+    { id: 'manus', label: 'Regio Manus (Tangan)', parent: 'appendicular' },
+    { id: '_label_ci', label: '── Cingulum Inferior', isLabel: true },
+    { id: 'cingulum_inferior', label: 'Cingulum Membri Inferioris', parent: 'appendicular' },
+    { id: '_label_ei', label: '── Extremitas Inferior', isLabel: true },
+    { id: 'femoris', label: 'Regio Femoris', parent: 'appendicular' },
+    { id: 'genus', label: 'Regio Genus', parent: 'appendicular' },
+    { id: 'cruris', label: 'Regio Cruris', parent: 'appendicular' },
+    { id: 'pedis', label: 'Regio Pedis', parent: 'appendicular' },
+  ]},
+];
+
+// ============ STATE ============
+let currentPage = 'home';
+let openSections = {};
+let quizStates = {};
+let quizTimers = {};
+const QUIZ_TIME_LIMIT = 600; // 10 minutes per quiz in seconds
+const SESSION_ID = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+
+// Anti-cheating: detect visibility changes, focus loss, right-click, copy attempts
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && quizStates[currentPage]?.submitted === false) {
+    if (!quizStates[currentPage]?.warningShown) {
+      showInlineWarning('⚠️ Larangan: Jangan pindah tab saat mengerjakan kuis!', 3000);
+      quizStates[currentPage].warningShown = true;
+    }
+  }
+});
+
+window.addEventListener('blur', () => {
+  if (quizStates[currentPage]?.submitted === false && !document.hidden) {
+    showInlineWarning('⚠️ Kuis terdeteksi: Tetap fokus pada jendela ini', 2000);
+  }
+});
+
+document.addEventListener('contextmenu', (e) => {
+  if (quizStates[currentPage]?.submitted === false) {
+    e.preventDefault();
+    showInlineWarning('🚫 Klik kanan dinonaktifkan selama kuis', 1500);
+  }
+});
+
+document.addEventListener('copy', (e) => {
+  if (quizStates[currentPage]?.submitted === false) {
+    e.preventDefault();
+    showInlineWarning('🚫 Copy dinonaktifkan selama kuis', 1500);
+  }
+});
+
+function showInlineWarning(msg, duration) {
+  let warn = document.getElementById('anti-cheat-warn');
+  if (!warn) {
+    warn = document.createElement('div');
+    warn.id = 'anti-cheat-warn';
+    warn.className = 'fixed top-4 right-4 z-50 bg-red-500 text-white px-4 py-2.5 rounded-lg text-xs md:text-sm font-semibold shadow-lg flex items-center gap-2';
+    document.body.appendChild(warn);
+  }
+  warn.textContent = msg;
+  warn.style.display = 'block';
+  warn.style.animation = 'fadeUp 0.3s ease';
+  clearTimeout(warn.hideTimeout);
+  warn.hideTimeout = setTimeout(() => { warn.style.display = 'none'; }, duration);
+}
+
+// ============ SIDEBAR ============
+function buildSidebar() {
+  const nav = document.getElementById('sidebar-nav');
+  nav.innerHTML = '';
+  SIDEBAR.forEach(section => {
+    const btn = document.createElement('button');
+    btn.className = 'sidebar-section-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left font-semibold text-sm text-navy';
+    btn.innerHTML = `<i data-lucide="${section.icon}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1">${section.label}</span>${section.children ? '<i data-lucide="chevron-down" class="w-3 h-3 transition-transform '+(openSections[section.id]?'rotate-180':'')+'"></i>' : ''}`;
+    if (!section.children) {
+      btn.onclick = () => { setActive(section.id); };
+    } else {
+      btn.onclick = () => { openSections[section.id] = !openSections[section.id]; buildSidebar(); };
+    }
+    if (section.id === currentPage || (section.children && section.children.some(c => c.id === currentPage))) btn.classList.add('active');
+    nav.appendChild(btn);
+
+    if (section.children) {
+      const sub = document.createElement('div');
+      sub.className = 'sub-items pl-4 space-y-0.5' + (openSections[section.id] ? ' open' : '');
+      section.children.forEach(child => {
+        if (child.isLabel) {
+          const lbl = document.createElement('div');
+          lbl.className = 'text-[11px] font-bold text-steel/60 uppercase tracking-wider pt-3 pb-1 px-3';
+          lbl.textContent = child.label;
+          sub.appendChild(lbl);
+        } else {
+          const item = document.createElement('div');
+          item.className = 'sidebar-item' + (currentPage === child.id ? ' active' : '');
+          item.textContent = child.label;
+          item.onclick = () => setActive(child.id);
+          sub.appendChild(item);
+        }
+      });
+      nav.appendChild(sub);
+    }
+  });
+  lucide.createIcons();
+}
+
+function setActive(id) {
+  currentPage = id;
+  // Stop any running timer
+  if (quizTimers[id]) clearInterval(quizTimers[id]);
+  // Auto-open parent by matching parent property
+  SIDEBAR.forEach(section => {
+    if (section.children) {
+      section.children.forEach(child => {
+        if (child.id === id && section.id) {
+          openSections[section.id] = true;
+        }
+      });
+    }
+  });
+  buildSidebar();
+  renderContent();
+  closeSidebar();
+  // Highlight nav
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('bg-white/15', b.dataset.nav === getNavGroup(id));
+  });
+}
+
+function getNavGroup(id) {
+  if (id === 'home') return 'home';
+  if (id === 'terminologi') return 'terminologi';
+  const axialIds = ['cranium','vertebralis','costae','sternum'];
+  if (axialIds.includes(id)) return 'axial';
+  return 'appendicular';
+}
+
+function navigateTo(group) {
+  const map = { home:'home', terminologi:'terminologi', axial:'cranium', appendicular:'cingulum_superior' };
+  currentPage = map[group] || 'home';
+  // Stop any running quiz timer
+  if (quizTimers[currentPage]) clearInterval(quizTimers[currentPage]);
+  // Clear quiz state if navigating away from quiz
+  Object.keys(quizTimers).forEach(key => {
+    if (key !== currentPage && quizTimers[key]) clearInterval(quizTimers[key]);
+  });
+  buildSidebar();
+  renderContent();
+  closeSidebar();
+  // Highlight nav
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('bg-white/15', b.dataset.nav === group);
+  });
+  // Scroll to top
+  const mainContent = document.getElementById('main-content');
+  if (mainContent) mainContent.scrollTop = 0;
+}
+
+// Mobile sidebar
+function closeSidebar() {
+  document.getElementById('sidebar').classList.add('-translate-x-full');
+  document.getElementById('sidebar').classList.remove('translate-x-0');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+}
+document.getElementById('mobile-menu-btn').onclick = () => {
+  document.getElementById('sidebar').classList.remove('-translate-x-full');
+  document.getElementById('sidebar').classList.add('translate-x-0');
+  document.getElementById('sidebar-overlay').classList.add('show');
+};
+
+// ============ CONTENT RENDER ============
+function renderContent() {
+  const area = document.getElementById('content-area');
+  area.className = 'max-w-3xl mx-auto content-fade';
+  if (currentPage === 'home') { renderHome(area); return; }
+  const data = DATA[currentPage];
+  if (!data) { area.innerHTML = `<p class="text-steel">Materi belum tersedia.</p>`; return; }
+  let html = `<div class="mb-6"><h1 class="font-display text-2xl md:text-3xl font-bold text-navy mb-2">${data.title}</h1><p class="text-steel text-sm md:text-base leading-relaxed">${data.intro}</p></div>`;
+
+  // Sections
+  data.sections.forEach((sec, i) => {
+    html += `<div class="mb-6" style="animation-delay:${i*80}ms">`;
+    html += `<h2 class="font-display text-lg font-bold text-navy mb-3 flex items-center gap-2"><span class="w-1.5 h-6 bg-ocean rounded-full inline-block"></span>${sec.heading}</h2>`;
+    if (sec.text) html += `<p class="text-steel text-sm leading-relaxed mb-3 pl-4">${sec.text}</p>`;
+    
+    // Add image if provided
+    if (sec.image) {
+      html += `<div class="mb-4 rounded-lg overflow-hidden border border-gray-200"><img src="${sec.image}" alt="${sec.heading}" loading="lazy" onerror="console.error('Image failed:', this.src); this.style.background='#e5e7eb'; this.alt='Gambar tidak tersedia';" style="width:100%; height:auto; display:block;"></div>`;
+    }
+    
+    // Add multiple models if provided
+    if (sec.models) {
+      html += `<div class="space-y-3 mb-4">`;
+      sec.models.forEach(model => {
+        html += `<div class="p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+          <div class="text-sm font-semibold text-navy mb-2">${model.title}</div>
+          <button onclick="window.open('${model.link}', '_blank', 'noopener,noreferrer')" class="w-full px-4 py-2 bg-ocean text-white rounded-lg font-medium text-xs hover:bg-blue-700 transition flex items-center justify-center gap-2">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>${model.button}
+          </button>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+    
+    if (sec.highlights) {
+      html += `<div class="space-y-2 pl-2">`;
+      sec.highlights.forEach(h => {
+        html += `<div class="highlight-card px-4 py-3"><span class="font-semibold text-navy text-sm">${h.term}</span><span class="text-steel text-sm"> — ${h.desc}</span></div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+
+  // 3D embed for femoris, genus, cruris, pedis, cingulum_inferior, cingulum_superior, deltoidea
+  if (currentPage === 'femoris' || currentPage === 'genus' || currentPage === 'cruris' || currentPage === 'pedis' || currentPage === 'cingulum_inferior' || currentPage === 'cingulum_superior' || currentPage === 'deltoidea') {
+    let model3dTitle, model3dLink, model3dButtonText;
+    
+    if (currentPage === 'femoris') {
+      model3dTitle = 'Model 3D Femur';
+      model3dLink = 'https://skfb.ly/6RpGU';
+      model3dButtonText = 'Buka Model Femur Standar';
+    } else if (currentPage === 'genus') {
+      model3dTitle = 'Model 3D Lutut';
+      model3dLink = 'https://skfb.ly/6AJ6x';
+      model3dButtonText = 'Buka Model Lutut Interaktif';
+    } else if (currentPage === 'cruris') {
+      model3dTitle = 'Model 3D Cruris (Tibia & Fibula)';
+      model3dLink = 'https://skfb.ly/6ursI'; // Default to tibia
+      model3dButtonText = 'Buka Model Cruris Interaktif';
+    } else if (currentPage === 'pedis') {
+      model3dTitle = 'Model 3D Pedis (Foot Bones)';
+      model3dLink = 'https://skfb.ly/6RZDp';
+      model3dButtonText = 'Buka Model 3D Kaki Lengkap';
+    } else if (currentPage === 'cingulum_inferior') {
+      model3dTitle = 'Model 3D Os Coxae / Pelvis';
+      model3dLink = 'https://skfb.ly/pxFWD';
+      model3dButtonText = 'Buka Model Os Coxae Interaktif';
+    } else if (currentPage === 'cingulum_superior') {
+      model3dTitle = 'Model 3D Cingulum Membres Superioris';
+      model3dLink = 'https://skfb.ly/6tAJV';
+      model3dButtonText = 'Buka Model Scapula 3D';
+    } else if (currentPage === 'deltoidea') {
+      model3dTitle = 'Model 3D Os Humerus';
+      model3dLink = 'https://skfb.ly/6r77O';
+      model3dButtonText = 'Buka Model Os Humerus Interaktif';
+    }
+  }
+
+  // Quiz
+  if (data.quiz) {
+    const qid = currentPage;
+    const qs = getQuizState(qid);
+    html += `<div class="mt-10 pt-6 border-t border-gray-200"><div class="flex items-center justify-between mb-4"><div class="flex items-center gap-2"><i data-lucide="brain" class="w-5 h-5 text-ocean"></i><h2 class="font-display text-lg font-bold text-navy">Kuis — ${data.title}</h2></div></div>`;
+    html += `<p class="text-steel text-sm mb-4">Kuis terdiri dari ${data.quiz.length} soal dengan sistem anti-mencontek.</p>`;
+    html += `<button onclick="openQuizModal('${qid}')" class="px-6 py-2.5 bg-ocean text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition flex items-center gap-2"><i data-lucide="play-circle" class="w-4 h-4"></i>Mulai Kuis</button>`;
+    html += `</div>`;
+  }
+
+  area.innerHTML = html;
+  lucide.createIcons();
+  document.getElementById('main-content').scrollTop = 0;
+}
+
+// ============ QUIZ MODAL ============
+window.openQuizModal = function(qid) {
+  const data = DATA[qid];
+  const qs = getQuizState(qid);
+  const modal = document.getElementById('quiz-modal');
+  const body = document.getElementById('quiz-modal-body');
+  document.getElementById('modal-title').textContent = data.title;
+
+  // Start timer
+  setTimeout(() => startQuizTimer(qid), 100);
+
+  let html = `<div class="flex items-center justify-between mb-6"><span id="timer-${qid}" class="text-lg font-bold text-ocean">⏱️ 10:00</span>`;
+  if (qs.submitted) html += `<span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold">Selesai</span>`;
+  html += `</div>`;
+
+  if (!qs.submitted) {
+    qs.questions.forEach((q, qi) => {
+      html += `<div class="mb-6 p-4 bg-gray-50 rounded-lg"><p class="font-semibold text-navy text-sm mb-3">${qi+1}. ${q.q}</p><div class="space-y-2">`;
+      
+      q.shuffledOptions.forEach((opt, displayOi) => {
+        const origOi = opt.origIdx;
+        let cls = 'quiz-option text-sm w-full text-left';
+        
+        if (qs.answers[qi] === displayOi) {
+          cls += ' !border-ocean !bg-sky';
+        }
+        
+        html += `<div class="${cls}" onclick="selectQuiz('${qid}',${qi},${displayOi})">${String.fromCharCode(65+displayOi)}. ${opt.text}</div>`;
+      });
+      
+      html += `</div></div>`;
+    });
+
+    html += `<button onclick="submitQuiz('${qid}')" class="w-full mt-4 px-6 py-3 bg-ocean text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2"><i data-lucide="check-circle" class="w-4 h-4"></i>Kirim Jawaban</button>`;
+  } else {
+    // Calculate score
+    let score = 0;
+    qs.questions.forEach((q, qi) => {
+      if (qs.answers[qi] !== undefined) {
+        const displayOi = qs.answers[qi];
+        const origOi = q.shuffledOptions[displayOi].origIdx;
+        if (origOi === q.answer) score++;
+      }
+    });
+    
+    const pct = Math.round(score/qs.questions.length*100);
+    const timeSpent = Math.floor((qs.endTime - qs.startTime) / 1000);
+    const mins = Math.floor(timeSpent / 60);
+    const secs = timeSpent % 60;
+    const color = pct >= 80 ? 'text-green-600 bg-green-50 border-green-200' : pct >= 60 ? 'text-yellow-700 bg-yellow-50 border-yellow-200' : 'text-red-600 bg-red-50 border-red-200';
+    
+    html += `<div class="p-5 rounded-xl border ${color}"><div class="flex items-start gap-4 mb-3"><div class="text-4xl font-bold">${pct}%</div><div><div class="font-semibold">${score}/${qs.questions.length} jawaban benar</div><div class="text-xs opacity-70">Waktu: ${mins}m ${secs}s</div><div class="text-xs opacity-70">Session: ${qs.sessionId}</div></div></div>`;
+    html += `<div class="text-sm opacity-80 mb-3">${pct>=80?'🎉 Excellent! Pemahaman Anda sempurna!':pct>=60?'👍 Cukup baik. Pelajari ulang materi yang kurang dipahami.':'📚 Perlu review menyeluruh. Baca kembali materi sebelum mencoba lagi.'}</div>`;
+    
+    if (qs.timeExpired) {
+      html += `<div class="text-xs bg-red-200/50 border border-red-300 rounded px-2 py-1 inline-block">⏰ Waktu habis sebelum selesai</div>`;
+    }
+    html += `</div>`;
+    
+    // Show answer review
+    html += `<div class="mt-6 space-y-3"><h3 class="font-semibold text-navy text-sm mb-3">Review Jawaban:</h3>`;
+    qs.questions.forEach((q, qi) => {
+      if (qs.answers[qi] !== undefined) {
+        const displayOi = qs.answers[qi];
+        const origOi = q.shuffledOptions[displayOi].origIdx;
+        const isCorrect = origOi === q.answer;
+        const userAns = q.shuffledOptions[displayOi].text;
+        const correctAns = q.originalOptions[q.answer];
+        
+        html += `<div class="p-3 rounded-lg ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+          <div class="text-xs font-semibold text-navy mb-1">Soal ${qi+1}: ${q.q}</div>
+          <div class="text-xs">Jawaban Anda: <span class="font-semibold">${userAns}</span> ${isCorrect ? '✅' : '❌'}</div>
+          ${!isCorrect ? `<div class="text-xs text-green-700">Jawaban Benar: <span class="font-semibold">${correctAns}</span></div>` : ''}
+        </div>`;
+      }
+    });
+    html += `</div>`;
+    
+    html += `<button onclick="resetQuiz('${qid}'); closeQuizModal();" class="w-full mt-4 px-5 py-2.5 bg-gray-100 text-navy rounded-lg font-medium text-sm hover:bg-gray-200 transition">Ulangi Kuis</button>`;
+  }
+
+  body.innerHTML = html;
+  modal.classList.add('show');
+  lucide.createIcons();
+};
+
+window.closeQuizModal = function() {
+  const modal = document.getElementById('quiz-modal');
+  modal.classList.remove('show');
+};
+
+// Close modal when clicking overlay
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('quiz-modal');
+  if (e.target === modal) {
+    closeQuizModal();
+  }
+});
+
+function renderHome(area) {
+  area.innerHTML = `
+  <div class="text-center py-8 md:py-16">
+    <div class="inline-flex items-center gap-2 bg-sky text-ocean text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
+      <i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i> Media Pembelajaran Interaktif
+    </div>
+    <h1 id="welcome-heading" class="font-display text-3xl md:text-5xl font-bold text-navy mb-4 leading-tight">Selamat Datang di<br>Atlas Anatomi Skeletal</h1>
+    <p id="welcome-text" class="text-steel max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed">Platform pembelajaran interaktif sistem skeletal manusia untuk mahasiswa kedokteran. Dilengkapi materi sistematis, visual 3D, dan kuis interaktif.</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-10">
+      <div class="bg-white rounded-xl p-5 border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="navigateTo('terminologi')">
+        <div class="w-10 h-10 bg-sky rounded-lg flex items-center justify-center mx-auto mb-3"><i data-lucide="book-open" class="w-5 h-5 text-ocean"></i></div>
+        <div class="font-semibold text-navy text-sm">Terminologi</div>
+        <div class="text-xs text-steel mt-1">Dasar istilah anatomi</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="navigateTo('axial')">
+        <div class="w-10 h-10 bg-sky rounded-lg flex items-center justify-center mx-auto mb-3"><i data-lucide="layers" class="w-5 h-5 text-ocean"></i></div>
+        <div class="font-semibold text-navy text-sm">Skeleton Axial</div>
+        <div class="text-xs text-steel mt-1">Cranium, Vertebra, Costae, Sternum</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="navigateTo('appendicular')">
+        <div class="w-10 h-10 bg-sky rounded-lg flex items-center justify-center mx-auto mb-3"><i data-lucide="git-branch" class="w-5 h-5 text-ocean"></i></div>
+        <div class="font-semibold text-navy text-sm">Skeleton Appendiculare</div>
+        <div class="text-xs text-steel mt-1">Extremitas superior & inferior</div>
+      </div>
+    </div>
+    <div class="flex flex-wrap justify-center gap-6 text-xs text-steel">
+      <div class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> 16 Regio Anatomi</div>
+      <div class="flex items-center gap-1.5"><i data-lucide="brain" class="w-3.5 h-3.5"></i> 80+ Soal Kuis</div>
+      <div class="flex items-center gap-1.5"><i data-lucide="box" class="w-3.5 h-3.5"></i> Area Embed 3D</div>
+    </div>
+  </div>`;
+  lucide.createIcons();
+}
+
+// ============ QUIZ ============
+// Randomize questions and options
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getQuizState(qid) {
+  if (!quizStates[qid]) {
+    const data = DATA[qid];
+    if (!data?.quiz) return null;
+    // Randomize questions
+    const shuffled = shuffleArray(data.quiz).map(q => ({
+      ...q,
+      originalOptions: q.options,
+      shuffledOptions: shuffleArray(q.options.map((opt, i) => ({ text: opt, origIdx: i }))),
+      userAnswer: null,
+    }));
+    quizStates[qid] = {
+      answers: {},
+      submitted: false,
+      startTime: Date.now(),
+      sessionId: SESSION_ID,
+      questions: shuffled,
+      warningShown: false,
+    };
+  }
+  return quizStates[qid];
+}
+
+window.selectQuiz = function(qid, qi, displayOi) {
+  const qs = getQuizState(qid);
+  if (!qs || qs.submitted) return;
+  qs.answers[qi] = displayOi;
+  // Update modal without closing
+  openQuizModal(qid);
+};
+
+window.submitQuiz = function(qid) {
+  const qs = getQuizState(qid);
+  if (!qs) return;
+  const data = DATA[qid];
+  const answered = Object.keys(qs.answers).length;
+  if (answered < qs.questions.length) {
+    showInlineWarning(`⚠️ Jawab semua ${qs.questions.length} soal terlebih dahulu`, 2500);
+    return;
+  }
+  qs.submitted = true;
+  qs.endTime = Date.now();
+  if (quizTimers[qid]) clearInterval(quizTimers[qid]);
+  saveQuizResultLocally(qid, qs, data);
+  openQuizModal(qid);
+};
+
+window.resetQuiz = function(qid) {
+  if (quizTimers[qid]) clearInterval(quizTimers[qid]);
+  quizStates[qid] = null;
+  renderContent();
+};
+
+// ============ SAVE QUIZ RESULTS (LOCAL STORAGE) ============
+function saveQuizResultLocally(qid, qs, data) {
+  if (!userData) return;
+  
+  try {
+    // Calculate score
+    let score = 0;
+    qs.questions.forEach((q, qi) => {
+      if (qs.answers[qi] !== undefined) {
+        const displayOi = qs.answers[qi];
+        const origOi = q.shuffledOptions[displayOi].origIdx;
+        if (origOi === q.answer) score++;
+      }
+    });
+    
+    const totalQuestions = qs.questions.length;
+    const percentage = Math.round(score / totalQuestions * 100);
+    const timeSpent = Math.floor((qs.endTime - qs.startTime) / 1000);
+    
+    // Create quiz result object
+    const quizResult = {
+      user_id: userData.user_id,
+      nama_lengkap: userData.nama_lengkap,
+      nim: userData.nim,
+      kelas: userData.kelas,
+      quiz_name: data.title,
+      quiz_id: qid,
+      score: score,
+      total_questions: totalQuestions,
+      percentage: percentage,
+      time_spent_seconds: timeSpent,
+      submitted_at: new Date().toISOString(),
+      session_id: SESSION_ID,
+    };
+    
+    // Save to localStorage
+    let allResults = JSON.parse(localStorage.getItem('atlas_quiz_results') || '[]');
+    allResults.push(quizResult);
+    localStorage.setItem('atlas_quiz_results', JSON.stringify(allResults));
+    
+    console.log('✓ Quiz result saved locally:', qid, percentage + '%');
+  } catch (err) {
+    console.error('❌ Failed to save quiz result:', err);
+  }
+}
+
+// Timer management
+function startQuizTimer(qid) {
+  if (quizTimers[qid]) clearInterval(quizTimers[qid]);
+  let elapsed = 0;
+  const timerEl = document.getElementById(`timer-${qid}`);
+  if (!timerEl) return;
+  
+  const updateTimer = () => {
+    elapsed = Math.floor((Date.now() - quizStates[qid].startTime) / 1000);
+    const remaining = Math.max(0, QUIZ_TIME_LIMIT - elapsed);
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    timerEl.textContent = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+    
+    if (remaining <= 60 && timerEl.parentElement) {
+      timerEl.parentElement.className = timerEl.parentElement.className.replace('text-steel', 'text-red-600 font-bold');
+    }
+    
+    if (remaining === 0) {
+      clearInterval(quizTimers[qid]);
+      quizStates[qid].submitted = true;
+      quizStates[qid].timeExpired = true;
+      quizStates[qid].endTime = Date.now();
+      renderContent();
+    }
+  };
+  
+  updateTimer();
+  quizTimers[qid] = setInterval(updateTimer, 1000);
+}
+
+// ============ SKETCHFAB EMBED ============
+window.openSketchfabLink = function() {
+  const input = document.getElementById('sketchfab-url-input');
+  if (!input || !input.value.trim()) {
+    showInlineWarning('⚠️ Paste URL Sketchfab terlebih dahulu', 2000);
+    return;
+  }
+  
+  let url = input.value.trim();
+  
+  // Extract model ID or validate URL
+  let modelId = '';
+  const embedMatch = url.match(/models\/([a-f0-9-]{1,})/i);
+  if (embedMatch) {
+    modelId = embedMatch[1];
+  } else if (url.match(/^[a-f0-9-]{1,}$/i)) {
+    // Direct model ID
+    modelId = url;
+  } else if (url.includes('sketchfab.com')) {
+    showInlineWarning('❌ Format URL tidak valid. Gunakan link dengan /models/', 2500);
+    return;
+  } else {
+    showInlineWarning('❌ Format URL tidak valid. Paste URL dari Sketchfab', 2500);
+    return;
+  }
+  
+  if (!modelId) {
+    showInlineWarning('⚠️ Model ID tidak ditemukan', 2000);
+    return;
+  }
+  
+  const sketchfabUrl = `https://sketchfab.com/models/${modelId}`;
+  window.open(sketchfabUrl, '_blank', 'noopener,noreferrer');
+  showInlineWarning('✅ Membuka model di Sketchfab...', 2000);
+};
+
+
+// ============ ELEMENT SDK ============
+const defaultConfig = {
+  site_title: 'Atlas Anatomi Skeletal',
+  welcome_heading: 'Selamat Datang di\nAtlas Anatomi Skeletal',
+  welcome_text: 'Platform pembelajaran interaktif sistem skeletal manusia untuk mahasiswa kedokteran. Dilengkapi materi sistematis, visual 3D, dan kuis interaktif.',
+  background_color: '#F8F9FB',
+  surface_color: '#FFFFFF',
+  text_color: '#546E7A',
+  primary_color: '#0B1D3A',
+  accent_color: '#1565C0',
+  font_family: 'DM Sans',
+  font_size: 14,
+};
+
+function applyConfig(config) {
+  const c = { ...defaultConfig, ...config };
+  const el = (id) => document.getElementById(id);
+
+  // Text
+  const st = el('site-title-text');
+  if (st) st.textContent = c.site_title;
+  const wh = el('welcome-heading');
+  if (wh) wh.innerHTML = (c.welcome_heading || defaultConfig.welcome_heading).replace(/\n/g, '<br>');
+  const wt = el('welcome-text');
+  if (wt) wt.textContent = c.welcome_text;
+
+  // Colors
+  document.body.style.backgroundColor = c.background_color;
+  const app = el('app');
+  if (app) app.style.backgroundColor = c.background_color;
+
+  // Navbar
+  const nav = el('navbar');
+  if (nav) nav.style.backgroundColor = c.primary_color;
+
+  // Surfaces
+  document.querySelectorAll('.bg-white, .bg-bone').forEach(e => {
+    if (e.id === 'sidebar' || e.closest('#sidebar')) e.style.backgroundColor = c.surface_color;
+  });
+
+  // Accent
+  document.documentElement.style.setProperty('--accent', c.accent_color);
+  document.querySelectorAll('.bg-ocean, .bg-sky').forEach(e => {
+    if (e.classList.contains('bg-ocean')) e.style.backgroundColor = c.accent_color;
+  });
+
+  // Font
+  const font = c.font_family || defaultConfig.font_family;
+  document.body.style.fontFamily = `${font}, sans-serif`;
+
+  // Font size
+  const bs = c.font_size || defaultConfig.font_size;
+  document.body.style.fontSize = `${bs}px`;
+}
+
+// Initialize elementSdk safely (deferred to after app loads)
+function initElementSdk() {
+  try {
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange: async (config) => { 
+          try { 
+            applyConfig(config); 
+          } catch(e) { 
+            console.warn('applyConfig error:', e); 
+          }
+        },
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            { get: () => config.background_color || defaultConfig.background_color, set: (v) => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+            { get: () => config.surface_color || defaultConfig.surface_color, set: (v) => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+            { get: () => config.text_color || defaultConfig.text_color, set: (v) => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+            { get: () => config.primary_color || defaultConfig.primary_color, set: (v) => { config.primary_color = v; window.elementSdk.setConfig({ primary_color: v }); } },
+            { get: () => config.accent_color || defaultConfig.accent_color, set: (v) => { config.accent_color = v; window.elementSdk.setConfig({ accent_color: v }); } },
+          ],
+          borderables: [],
+          fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: (v) => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+          fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: (v) => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } },
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ['site_title', config.site_title || defaultConfig.site_title],
+          ['welcome_heading', config.welcome_heading || defaultConfig.welcome_heading],
+          ['welcome_text', config.welcome_text || defaultConfig.welcome_text],
+        ]),
+      });
+      console.log('✓ elementSdk initialized successfully');
+    }
+  } catch(e) {
+    console.warn('elementSdk initialization error:', e.message);
+  }
+}
+
+    // Initialize on page load
+window.addEventListener('DOMContentLoaded', async () => {
+  console.log('✓ DOMContentLoaded fired');
+  
+  // Check if user already registered
+  const isRegistered = checkRegistration();
+  console.log('✓ Registration check:', isRegistered ? 'Registered' : 'Not registered');
+  
+  if (!isRegistered) {
+    console.log('✓ Showing registration screen...');
+    showRegistration();
+    buildRegistrationForm();
+  } else {
+    console.log('✓ User is registered, showing app...');
+    hideRegistration();
+    updateUserWatermark();
+    
+    // Set currentPage to home BEFORE rendering
+    currentPage = 'home';
+    
+    // Build UI
+    console.log('✓ Building sidebar...');
+    buildSidebar();
+    console.log('✓ Rendering content...');
+    renderContent();
+    
+    // Create Lucide icons
+    console.log('✓ Creating Lucide icons...');
+    lucide.createIcons();
+    
+    // Initialize Element SDK
+    console.log('✓ Initializing Element SDK...');
+    initElementSdk();
+    
+    console.log('✓ Initialization complete!');
+  }
+}, { once: true });
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a17ca2bbf628be7b',t:'MTc4MzQ4Nzk4NC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
