@@ -51,10 +51,36 @@ function hideRegistration() {
 }
 
 function updateUserWatermark() {
+  const watermarkEl = document.getElementById('user-watermark');
+  const logoutBtn = document.getElementById('logout-button');
+  if (!watermarkEl) return;
+
   if (userData) {
-    const watermarkEl = document.getElementById('user-watermark');
-    if (watermarkEl) {
-      watermarkEl.innerHTML = `👤 ${userData.nama_lengkap}<br><span class="text-[10px] opacity-70">${userData.nim} • ${userData.kelas}</span>`;
+    watermarkEl.innerHTML = `
+      <div class="flex items-center gap-2.5">
+        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
+          <i data-lucide="user-circle" class="h-4 w-4"></i>
+        </div>
+        <div class="min-w-0 text-right">
+          <div class="truncate text-[11px] font-semibold leading-tight">${userData.nama_lengkap}</div>
+          <div class="mt-0.5 text-[10px] text-white/75">${userData.nim} • ${userData.kelas}</div>
+        </div>
+      </div>
+    `;
+    watermarkEl.classList.remove('hidden');
+    watermarkEl.style.display = 'block';
+    if (logoutBtn) {
+      logoutBtn.classList.remove('hidden');
+      logoutBtn.style.display = 'inline-flex';
+    }
+    if (window.lucide) lucide.createIcons();
+  } else {
+    watermarkEl.innerHTML = '';
+    watermarkEl.classList.add('hidden');
+    watermarkEl.style.display = 'none';
+    if (logoutBtn) {
+      logoutBtn.classList.add('hidden');
+      logoutBtn.style.display = 'none';
     }
   }
 }
@@ -65,9 +91,11 @@ function logoutUser() {
   allUsers = [];
   quizStates = {};
   quizTimers = {};
+  pendingOwnerReportResults = [];
   currentPage = 'home';
   isInitialized = false;
   openSections = {};
+  localStorage.removeItem('atlas_owner_quiz_results_pending');
   
   // Clear all timers
   Object.keys(quizTimers).forEach(key => {
@@ -79,6 +107,8 @@ function logoutUser() {
   const regScreen = document.getElementById('registration-screen');
   if (app) app.classList.add('hidden');
   if (regScreen) regScreen.classList.remove('hidden');
+  
+  updateUserWatermark();
   
   // Reset and rebuild form
   const form = document.getElementById('registration-form');
@@ -143,22 +173,12 @@ html, body { height: 100%; margin: 0; font-family: 'DM Sans', sans-serif; }
   <script src="/_sdk/0179d719c431a79e.data_sdk.js" type="text/javascript" integrity="sha512-OsRvJkI5GkC3MJQcgotQYotpzrMSX415GiKKgvYdxQEEkzD/fdchShO2FMSy0PJr/tiINMXOk5Vl2zAgg6bUiA=="></script>
  </head>
  <body class="h-full bg-bone">
-  <div id="app" class="h-full flex flex-col overflow-hidden hidden" style="width:100%;"><!-- Top Navbar -->
-   <header id="navbar" class="flex items-center justify-between px-4 md:px-6 py-3 bg-navy text-white z-30 flex-shrink-0">
-    <div class="flex items-center gap-3"><button id="mobile-menu-btn" class="md:hidden p-1.5 rounded-lg hover:bg-white/10"><i data-lucide="menu" class="w-5 h-5"></i></button>
-     <div class="flex items-center gap-2">
-      <div class="w-8 h-8 rounded-lg bg-ocean flex items-center justify-center">
-       <i data-lucide="zap" class="w-4 h-4"></i>
-      </div><span id="site-title-text" class="font-display font-bold text-base md:text-lg tracking-tight">Learning Platform</span>
-     </div>
-     <div class="hidden md:block text-xs text-sky/60 pl-6 border-l border-white/20"><span id="user-watermark"></span>
-     </div>
-    </div>
-    <nav id="main-nav" class="hidden md:flex items-center gap-1 text-sm"><button onclick="navigateTo('home')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="home">Beranda</button> <button onclick="navigateTo('terminologi')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="terminologi">Terminologi</button> <button onclick="navigateTo('axial')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="axial">Axial</button> <button onclick="navigateTo('appendicular')" class="nav-btn px-3 py-1.5 rounded-lg hover:bg-white/10 transition font-medium" data-nav="appendicular">Appendiculare</button>
-    </nav>
-    <div class="flex items-center gap-3"><span class="hidden md:inline text-xs text-sky/70">Fakultas Kedokteran</span><button onclick="logoutUser()" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition flex items-center gap-1.5"><i data-lucide="log-out" class="w-3.5 h-3.5"></i><span class="hidden md:inline">Logout</span></button>
-    </div>
-   </header>
+  <button id="logout-button" onclick="logoutUser()" class="hidden fixed top-3 right-[17rem] z-[95] items-center gap-2 rounded-full border border-white/20 bg-red-500/90 px-3 py-2 text-[11px] font-semibold text-white shadow-[0_10px_25px_rgba(0,0,0,0.2)] backdrop-blur-md transition hover:bg-red-600" style="display:none;">
+   <i data-lucide="log-out" class="h-3.5 w-3.5"></i>
+   <span>Logout</span>
+  </button>
+  <div id="user-watermark" class="hidden fixed top-3 right-3 z-[90] max-w-[250px] rounded-2xl border border-white/20 bg-gradient-to-br from-slate-900/95 via-slate-800/90 to-blue-900/90 px-3 py-2.5 text-white shadow-[0_10px_30px_rgba(0,0,0,0.28)] ring-1 ring-white/10 backdrop-blur-xl" style="display:none;"></div>
+  <div id="app" class="h-full flex flex-col overflow-hidden hidden" style="width:100%;">
    <div class="flex flex-1 overflow-hidden"><!-- Sidebar Overlay (mobile) -->
     <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div><!-- Sidebar -->
     <aside id="sidebar" class="fixed md:relative z-50 md:z-auto -translate-x-full md:translate-x-0 transition-transform w-64 flex-shrink-0 bg-white border-r border-gray-100 h-full overflow-y-auto flex flex-col">
@@ -1308,6 +1328,7 @@ let currentPage = 'home';
 let openSections = {};
 let quizStates = {};
 let quizTimers = {};
+let pendingOwnerReportResults = JSON.parse(localStorage.getItem('atlas_owner_quiz_results_pending') || '[]');
 const QUIZ_TIME_LIMIT = 600; // 10 minutes per quiz in seconds
 const SESSION_ID = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 
@@ -1449,15 +1470,26 @@ function navigateTo(group) {
 
 // Mobile sidebar
 function closeSidebar() {
-  document.getElementById('sidebar').classList.add('-translate-x-full');
-  document.getElementById('sidebar').classList.remove('translate-x-0');
-  document.getElementById('sidebar-overlay').classList.remove('show');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) {
+    sidebar.classList.add('-translate-x-full');
+    sidebar.classList.remove('translate-x-0');
+  }
+  if (overlay) overlay.classList.remove('show');
 }
-document.getElementById('mobile-menu-btn').onclick = () => {
-  document.getElementById('sidebar').classList.remove('-translate-x-full');
-  document.getElementById('sidebar').classList.add('translate-x-0');
-  document.getElementById('sidebar-overlay').classList.add('show');
-};
+const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+if (mobileMenuBtn) {
+  mobileMenuBtn.onclick = () => {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) {
+      sidebar.classList.remove('-translate-x-full');
+      sidebar.classList.add('translate-x-0');
+    }
+    if (overlay) overlay.classList.add('show');
+  };
+}
 
 // ============ CONTENT RENDER ============
 function renderContent() {
@@ -1545,6 +1577,9 @@ function renderContent() {
     html += `<div class="mt-10 pt-6 border-t border-gray-200"><div class="flex items-center justify-between mb-4"><div class="flex items-center gap-2"><i data-lucide="brain" class="w-5 h-5 text-ocean"></i><h2 class="font-display text-lg font-bold text-navy">Kuis — ${data.title}</h2></div></div>`;
     html += `<p class="text-steel text-sm mb-4">Kuis terdiri dari ${data.quiz.length} soal dengan sistem anti-mencontek.</p>`;
     html += `<button onclick="openQuizModal('${qid}')" class="px-6 py-2.5 bg-ocean text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition flex items-center gap-2"><i data-lucide="play-circle" class="w-4 h-4"></i>Mulai Kuis</button>`;
+    if (pendingOwnerReportResults.length > 0) {
+      html += `<div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div class="font-semibold">Ringkasan akhir siap dikirim</div><div class="text-xs opacity-80">${pendingOwnerReportResults.length} kuis sudah diselesaikan dan akan dikirim sekaligus.</div></div><button onclick="submitFinalOwnerSummary()" class="rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white transition hover:bg-amber-700">Kirim Ringkasan Akhir</button></div></div>`;
+    }
     html += `</div>`;
   }
 
@@ -1740,7 +1775,7 @@ window.submitQuiz = function(qid) {
   qs.submitted = true;
   qs.endTime = Date.now();
   if (quizTimers[qid]) clearInterval(quizTimers[qid]);
-  saveQuizResultLocally(qid, qs, data);
+  queueQuizResultForOwnerSummary(qid, qs, data);
   openQuizModal(qid);
 };
 
@@ -1750,8 +1785,8 @@ window.resetQuiz = function(qid) {
   renderContent();
 };
 
-// ============ SAVE QUIZ RESULTS (LOCAL STORAGE) ============
-function saveQuizResultLocally(qid, qs, data) {
+// ============ SAVE QUIZ RESULTS (OWNER REPORT) ============
+function queueQuizResultForOwnerSummary(qid, qs, data) {
   if (!userData) return;
   
   try {
@@ -1769,8 +1804,9 @@ function saveQuizResultLocally(qid, qs, data) {
     const percentage = Math.round(score / totalQuestions * 100);
     const timeSpent = Math.floor((qs.endTime - qs.startTime) / 1000);
     
-    // Create quiz result object
+    // Create owner-facing quiz report object
     const quizResult = {
+      recipient: 'pemilik_website',
       user_id: userData.user_id,
       nama_lengkap: userData.nama_lengkap,
       nim: userData.nim,
@@ -1785,14 +1821,42 @@ function saveQuizResultLocally(qid, qs, data) {
       session_id: SESSION_ID,
     };
     
-    // Save to localStorage
-    let allResults = JSON.parse(localStorage.getItem('atlas_quiz_results') || '[]');
-    allResults.push(quizResult);
-    localStorage.setItem('atlas_quiz_results', JSON.stringify(allResults));
+    pendingOwnerReportResults.push(quizResult);
+    localStorage.setItem('atlas_owner_quiz_results_pending', JSON.stringify(pendingOwnerReportResults));
     
-    console.log('✓ Quiz result saved locally:', qid, percentage + '%');
+    console.log('✓ Quiz result queued for final owner report:', qid, percentage + '%');
   } catch (err) {
-    console.error('❌ Failed to save quiz result:', err);
+    console.error('❌ Failed to queue quiz result for owner:', err);
+  }
+}
+
+function submitFinalOwnerSummary() {
+  if (!pendingOwnerReportResults.length) {
+    showInlineWarning('Belum ada hasil kuis yang siap dikirim', 2000);
+    return;
+  }
+
+  try {
+    const ownerResults = JSON.parse(localStorage.getItem('atlas_owner_quiz_results') || '[]');
+    ownerResults.push(...pendingOwnerReportResults);
+    localStorage.setItem('atlas_owner_quiz_results', JSON.stringify(ownerResults));
+
+    const blob = new Blob([JSON.stringify(ownerResults, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ringkasan-hasil-kuis-pemilik-website-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    pendingOwnerReportResults = [];
+    localStorage.removeItem('atlas_owner_quiz_results_pending');
+    showInlineWarning('✅ Ringkasan akhir berhasil dikirim', 2500);
+    renderContent();
+  } catch (err) {
+    console.error('❌ Failed to send final owner report:', err);
   }
 }
 
@@ -1960,12 +2024,20 @@ function initElementSdk() {
     // Initialize on page load
 window.addEventListener('DOMContentLoaded', async () => {
   console.log('✓ DOMContentLoaded fired');
+
+  const params = new URLSearchParams(window.location.search);
+  const resetRegistration = params.get('reset') === '1';
+  const isLocalFile = window.location.protocol === 'file:';
+
+  if (resetRegistration || isLocalFile) {
+    localStorage.removeItem('atlas_user');
+  }
   
   // Check if user already registered
   const isRegistered = checkRegistration();
   console.log('✓ Registration check:', isRegistered ? 'Registered' : 'Not registered');
   
-  if (!isRegistered) {
+  if (!isRegistered || resetRegistration || isLocalFile) {
     console.log('✓ Showing registration screen...');
     showRegistration();
     buildRegistrationForm();
