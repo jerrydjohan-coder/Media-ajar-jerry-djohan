@@ -159,6 +159,8 @@ html, body { height: 100%; margin: 0; font-family: 'DM Sans', sans-serif; }
 /* 3D placeholder */
 .embed-3d { background: linear-gradient(135deg, #0B1D3A 0%, #1565C0 100%); border-radius: 14px; min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; gap: 12px; }
 
+.content-image { width: auto; max-width: 100%; max-height: 520px; height: auto; object-fit: contain; object-position: center; display: block; margin: 0 auto; }
+
 /* Quiz Modal */
 .quiz-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 60; display: none; align-items: center; justify-content: center; padding: 1rem; }
 .quiz-modal-overlay.show { display: flex; }
@@ -1508,7 +1510,7 @@ function renderContent() {
     
     // Add image if provided
     if (sec.image) {
-      html += `<div class="mb-4 rounded-lg overflow-hidden border border-gray-200"><img src="${sec.image}" alt="${sec.heading}" loading="lazy" onerror="console.error('Image failed:', this.src); this.style.background='#e5e7eb'; this.alt='Gambar tidak tersedia';" style="width:100%; height:auto; display:block;"></div>`;
+      html += `<div class="mb-4 rounded-lg overflow-hidden border border-gray-200"><img src="${sec.image}" alt="${sec.heading}" loading="lazy" class="content-image" onerror="console.error('Image failed:', this.src); this.style.background='#e5e7eb'; this.alt='Gambar tidak tersedia';"></div>`;
     }
     
     // Add multiple models if provided
